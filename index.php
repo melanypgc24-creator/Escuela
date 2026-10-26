@@ -5,7 +5,7 @@
 <html>
 <link rel="stylesheet" href="css/estilos.css">
 
-<h1>Bienvenidos a la escuela de Jiu jitsu Tem cats</h1>
+<h1>Bienvenidos a la escuela de Jiu jitsu Tem cats Matamors</h1>
 <body>
-    <h2> Escuela de artes marciales</h2>
+    <h2> Escuela de artes marciales </h2>
 </body>
