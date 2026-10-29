@@ -1,11 +1,10 @@
-<?php include('includes/footer.php'); ?>
-<?php include('includes/header.php'); ?>
+<?php include __DIR__ . '/includes/header.php'; ?>
 
-<!DOCTYPE html>
-<html>
-<link rel="stylesheet" href="css/estilos.css">
+<main>
+    <h1>Bienvenidos a la escuela de Jiu jitsu Team Cats Matamoros</h1>
+    <h2>Escuela de artes marciales</h2>
+</main>
 
-<h1>Bienvenidos a la escuela de Jiu jitsu Tem cats Matamors</h1>
-<body>
-    <h2> Escuela de artes marciales </h2>
+<?php include __DIR__ . '/includes/footer.php'; ?>
 </body>
+</html>

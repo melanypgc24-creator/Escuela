@@ -50,3 +50,73 @@ h1 {
 p {
   margin-left: 20px;
 }
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f1f1ed;
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  padding: 32px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 12%);
+}
+
+.auth-card h1 {
+  margin: 18px 0 10px;
+}
+
+.auth-card > p {
+  margin: 0 0 20px;
+  text-align: center;
+}
+
+.auth-home-link {
+  color: #333;
+}
+
+.auth-card form {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-card label {
+  font-weight: bold;
+}
+
+.auth-card input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #aaa;
+  border-radius: 5px;
+}
+
+.auth-card button {
+  min-height: 44px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 5px;
+  background: #7c7c78;
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.auth-error {
+  padding: 10px;
+  border: 1px solid #c33;
+  border-radius: 5px;
+  background: #fff0f0;
+  color: #8b1111;
+}
+
+.dashboard-card > p {
+  margin: 14px 0;
+}
