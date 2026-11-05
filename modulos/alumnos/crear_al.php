@@ -1,5 +1,6 @@
 <?php
 require_once '../../config/database.php';
+require_once '../../includes/header.php';
 
 // Procesar el formulario al enviar
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {

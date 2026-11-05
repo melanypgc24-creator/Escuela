@@ -1,5 +1,7 @@
+
 <?php
 require_once '../../config/database.php';
+require_once '../../includes/header.php';
 
 $sql = "SELECT a.id_alumno, a.nombre, a.apellidos, a.fecha_nacimiento, a.telefono, a.fecha_ingreso, a.estatus, c.color AS cinturon 
         FROM alumnos a 
@@ -8,7 +10,7 @@ $stmt = $conexion->prepare($sql);
 $stmt->execute();
 $alumnos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
+<link rel="stylesheet" href="/Escuela/css/estilos.css">
 <h1>Lista de Alumnos</h1>
 <a href="crear_al.php">Agregar Nuevo Alumno</a>
 <br><br>
@@ -41,4 +43,6 @@ $alumnos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </td>
     </tr>
     <?php endforeach; ?>
+
 </table>
+<?php require_once '../../includes/footer.php'; ?>
