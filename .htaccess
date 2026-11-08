@@ -1,4 +1,4 @@
 Options -Indexes
 RewriteEngine On
-RewriteRule ^(?:config|controllers|core|database|middleware|models|routes|views)(?:/|$) - [F,L]
+RewriteRule ^(?:config|controllers|core|database|includes|middleware|models|routes|views)(?:/|$) - [F,L]
 RewriteRule ^(?:bootstrap\.php|README\.md)$ - [F,L]

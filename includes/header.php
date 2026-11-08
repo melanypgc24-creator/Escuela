@@ -18,5 +18,6 @@
             <a href="./#sobre-nosotros"><i class="fa-solid fa-users" aria-hidden="true"></i> Sobre Nosotros</a>
             <a href="./#clases"><i class="fa-solid fa-clipboard" aria-hidden="true"></i> Clases</a>
             <a href="login.php"><i class="fa-solid fa-circle-user"></i> Iniciar sesión</a>
+            <a href="register.php">Crear cuenta</a>
         </nav>
     </header>

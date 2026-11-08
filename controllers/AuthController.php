@@ -5,11 +5,11 @@ namespace App\Controllers;
 
 use App\Core\JsonResponse;
 use App\Core\Request;
-use App\Models\AdminModel;
+use App\Models\UserModel;
 
 final class AuthController
 {
-    public function __construct(private AdminModel $admins)
+    public function __construct(private UserModel $users)
     {
     }
 
@@ -27,18 +27,25 @@ final class AuthController
             return;
         }
 
-        $admin = $this->admins->findByEmail($email);
-        if ($admin === null || !password_verify($password, $admin['password_hash'])) {
+        $user = $this->users->findByEmail($email);
+        if ($user === null || !password_verify($password, $user['password'])) {
             JsonResponse::send(['error' => 'Credenciales incorrectas.'], 401);
             return;
         }
 
         session_regenerate_id(true);
-        $_SESSION['admin_id'] = (int) $admin['id'];
-        $_SESSION['admin_name'] = $admin['name'];
+        $_SESSION['id_usuario'] = (int) $user['id_usuario'];
+        $_SESSION['correo'] = $user['correo'];
+        $_SESSION['rol'] = $user['rol'];
+        $_SESSION['id_alumno'] = $user['id_alumno'] === null ? null : (int) $user['id_alumno'];
+        $_SESSION['id_profesor'] = $user['id_profesor'] === null ? null : (int) $user['id_profesor'];
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         JsonResponse::send([
-            'data' => ['id' => (int) $admin['id'], 'name' => $admin['name'], 'email' => $admin['email']],
+            'data' => [
+                'id_usuario' => (int) $user['id_usuario'],
+                'correo' => $user['correo'],
+                'rol' => $user['rol'],
+            ],
             'csrf_token' => $_SESSION['csrf_token'],
         ]);
     }

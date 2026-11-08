@@ -10,13 +10,19 @@ final class Router
 {
     private array $routes = [];
 
-    public function add(string $method, string $pattern, callable $handler, bool $authenticated = true): void
-    {
+    public function add(
+        string $method,
+        string $pattern,
+        callable $handler,
+        bool $authenticated = true,
+        bool $administratorOnly = false
+    ): void {
         $this->routes[] = [
             'method' => strtoupper($method),
             'pattern' => $pattern,
             'handler' => $handler,
             'authenticated' => $authenticated,
+            'administrator_only' => $administratorOnly,
         ];
     }
 
@@ -31,6 +37,9 @@ final class Router
             try {
                 if ($route['authenticated']) {
                     AuthMiddleware::requireAuthenticated();
+                    if ($route['administrator_only']) {
+                        AuthMiddleware::requireAdministrator();
+                    }
                     if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
                         AuthMiddleware::requireValidCsrfToken();
                     }
