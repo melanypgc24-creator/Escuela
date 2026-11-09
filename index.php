@@ -41,6 +41,40 @@ include __DIR__ . '/includes/header.php';
         </div>
     </section>
 
+    <section class="seccion-gimnasio" aria-labelledby="titulo-gimnasio">
+        <h2 id="titulo-gimnasio">Patio Matamoros</h2>
+        <div class="contenido-gimnasio">
+            <figure class="vista-gimnasio">
+                <img src="imagenes/EjemGym1.png" alt="Vista del gimnasio Team Cats en Patio Matamoros">
+            </figure>
+            <div class="detalles-gimnasio">
+                <article class="detalle-gimnasio">
+                    <span class="icono-detalle-gimnasio" aria-hidden="true">
+                        <i class="fa-regular fa-clock"></i>
+                    </span>
+                    <div>
+                        <h3>Horarios de clase</h3>
+                        <p>Lunes, miércoles y viernes</p>
+                        <p>7:00 p. m. – 9:30 p. m.</p>
+                        <p class="nota-gimnasio">También contamos con clases particulares.</p>
+                    </div>
+                </article>
+                <article class="detalle-gimnasio">
+                    <span class="icono-detalle-gimnasio" aria-hidden="true">
+                        <i class="fa-solid fa-location-dot"></i>
+                    </span>
+                    <div>
+                        <h3>Ubicación</h3>
+                        <p>Av. Leyes de Reforma, Santa Elena, Matamoros, Tamaulipas, 87344</p>
+                        <a href="https://maps.app.goo.gl/fXdcbokYHXDuwUqu9" target="_blank" rel="noopener noreferrer">
+                            Ver ubicación en el mapa
+                        </a>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
     <section class="seccion-introduccion" id="sobre-nosotros" aria-labelledby="titulo-introduccion">
         <div class="encabezado-seccion">
             <p class="texto-superior"><span></span> Más que un entrenamiento</p>
@@ -48,18 +82,18 @@ include __DIR__ . '/includes/header.php';
             <p>Creemos que las artes marciales fortalecen el cuerpo y también enseñan habilidades para la vida.</p>
         </div>
         <div class="tarjetas-valores" id="clases">
-            <article class="tarjeta-valor">
+            <article class="tarjeta-valor" tabindex="0">
                 <span class="icono-tarjeta"><i class="fa-solid fa-handshake-angle" aria-hidden="true"></i></span>
                 <h3>Aprende a tu ritmo</h3>
                 <p>Da tus primeros pasos y construye nuevas habilidades con práctica y constancia.</p>
             </article>
-            <article class="tarjeta-valor">
-                <span class="icono-tarjeta icono-tarjeta-rosa"><i class="fa-solid fa-shield-heart" aria-hidden="true"></i></span>
+            <article class="tarjeta-valor" tabindex="0">
+                <span class="icono-tarjeta icono-tarjeta-rosa"><i class="fa-solid fa-shield" aria-hidden="true"></i></span>
                 <h3>Crece con confianza</h3>
                 <p>Fortalece tu seguridad, enfoque y respeto dentro y fuera del tatami.</p>
             </article>
-            <article class="tarjeta-valor">
-                <span class="icono-tarjeta icono-tarjeta-azul"><i class="fa-solid fa-people-group" aria-hidden="true"></i></span>
+            <article class="tarjeta-valor" tabindex="0">
+                <span class="icono-tarjeta icono-tarjeta-azul"><i class="fa-solid fa-users" aria-hidden="true"></i></span>
                 <h3>Entrena en equipo</h3>
                 <p>Forma parte de una comunidad que aprende, se apoya y avanza unida.</p>
             </article>

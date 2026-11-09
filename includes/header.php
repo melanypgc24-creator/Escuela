@@ -6,7 +6,7 @@
     <title>Escuela de Jujutsu</title>
     <link rel="stylesheet" href="css/estilos.css">
     <?php if (isset($paginaActual) && $paginaActual === 'inicio'): ?>
-        <link rel="stylesheet" href="css/inicio.css">
+        <link rel="stylesheet" href="css/inicio.css?v=<?= filemtime(__DIR__ . '/../css/inicio.css') ?>">
     <?php endif; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
