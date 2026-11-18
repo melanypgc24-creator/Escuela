@@ -62,7 +62,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $pdo = require __DIR__ . '/config/conexion.php';
                     $statement = $pdo->prepare(
                         'SELECT id_usuario, correo, `password`, rol, id_alumno, id_profesor
-                         FROM escuela_usuarios
+                         FROM usuarios
                          WHERE correo = :correo
                          LIMIT 1'
                     );
@@ -79,7 +79,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     } else {
                         if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
                             $rehash = $pdo->prepare(
-                                'UPDATE escuela_usuarios
+                                'UPDATE usuarios
                                  SET `password` = :password
                                  WHERE id_usuario = :id_usuario'
                             );
@@ -123,7 +123,7 @@ $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOT
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#20252d">
     <title>Iniciar sesión | Team Cats</title>
-    <link rel="stylesheet" href="css/estilos.css">
+    <link rel="stylesheet" href="css/estilos.css?v=5">
 </head>
 <body class="auth-page login-page">
     <main class="login-layout">
@@ -172,15 +172,30 @@ $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOT
                 </span>
 
                 <label for="password">Contraseña</label>
-                <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autocomplete="current-password"
-                    required
-                    placeholder="Contraseña"
-                    aria-describedby="password-validation"
-                >
+                <div class="password-input-wrap">
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                        placeholder="Contraseña"
+                        aria-describedby="password-validation"
+                    >
+                    <button class="password-toggle" type="button" data-password-toggle
+                        aria-controls="password" aria-label="Mostrar contraseña" aria-pressed="false"
+                        data-show-label="Mostrar contraseña" data-hide-label="Ocultar contraseña"
+                        title="Mostrar contraseña">
+                        <svg data-eye-closed viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                            <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5.2 0 8.7 4.2 10 7-.5 1-1.3 2.1-2.4 3.1M6.2 6.2C3.9 7.6 2.5 9.7 2 12c.5 1.1 1.4 2.4 2.8 3.6A10.7 10.7 0 0 0 12 19c1.2 0 2.3-.2 3.3-.6"/>
+                        </svg>
+                        <svg data-eye-open viewBox="0 0 24 24" aria-hidden="true" hidden>
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
                 <span id="password-validation" class="login-field-help" data-validation-for="password" aria-live="polite"></span>
 
                 <button type="submit" class="login-submit">Entrar</button>
@@ -189,6 +204,6 @@ $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOT
             <p class="auth-register-link">¿Aún no tienes cuenta? <a href="register.php">Crear cuenta</a></p>
         </section>
     </main>
-    <script src="js/auth-validation.js" defer></script>
+    <script src="js/auth-validation.js?v=3" defer></script>
 </body>
 </html>

@@ -19,7 +19,7 @@ function require_role(string|array $roles): void
     try {
         $pdo = require dirname(__DIR__) . '/config/conexion.php';
         $statement = $pdo->prepare(
-            'SELECT rol FROM escuela_usuarios WHERE id_usuario = :id_usuario'
+            'SELECT rol FROM usuarios WHERE id_usuario = :id_usuario'
         );
         $statement->execute(['id_usuario' => $_SESSION['id_usuario']]);
         $currentRole = $statement->fetchColumn();

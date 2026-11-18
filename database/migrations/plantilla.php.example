@@ -1,0 +1,14 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'id' => 'AAAAMMDD_HHMMSS_descripcion_corta',
+    'description' => 'Descripción breve de la migración',
+    // true solo para sentencias DML sin commit implícito.
+    // En MariaDB, ALTER/CREATE/DROP/TRUNCATE generan commit implícito.
+    'transactional' => false,
+    'statements' => [
+        '/* agrega aquí sentencias SQL */',
+    ],
+];
+

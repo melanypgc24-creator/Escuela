@@ -31,7 +31,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         || !hash_equals($csrfToken, $providedToken)) {
         http_response_code(403);
         $error = 'La solicitud venció. Recarga la página e inténtalo de nuevo.';
-    } elseif ($studentId === false || $studentId < 1) {
+    } elseif ($studentId === false || $studentId < 0) {
         $error = 'Selecciona un alumno válido.';
     } elseif (!is_string($concept) || trim($concept) === '' || mb_strlen(trim($concept), 'UTF-8') > 100) {
         $error = 'Escribe un concepto de hasta 100 caracteres.';
@@ -42,43 +42,79 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $error = 'Selecciona un método de pago válido.';
     } else {
         try {
-            $pdo->beginTransaction();
-            $student = $pdo->prepare(
-                'SELECT id_alumno
-                 FROM escuela_alumnos
-                 WHERE id_alumno = :id_alumno AND estatus = 1
-                 FOR UPDATE'
-            );
-            $student->execute(['id_alumno' => $studentId]);
+            \App\Core\DatabaseLock::run(
+                $pdo,
+                \App\Core\LegacyIdAllocator::lockNameForTable('pagos'),
+                static function () use ($pdo, $studentId, $concept, $amount, $method, &$error): void {
+                    $pdo->beginTransaction();
+                    try {
+                        $student = $pdo->prepare(
+                            'SELECT id_alumno
+                             FROM alumnos
+                             WHERE id_alumno = :id_alumno AND estatus = 1
+                             FOR UPDATE'
+                        );
+                        $student->execute(['id_alumno' => $studentId]);
 
-            if ($student->fetchColumn() === false) {
-                $pdo->rollBack();
-                $error = 'El alumno seleccionado no existe o está inactivo.';
-            } else {
-                $payment = $pdo->prepare(
-                    'INSERT INTO escuela_pagos
-                        (id_alumno, concepto, monto, fecha_pago, metodo_pago)
-                     VALUES
-                        (:id_alumno, :concepto, :monto, CURRENT_DATE, :metodo_pago)'
-                );
-                $payment->execute([
-                    'id_alumno' => $studentId,
-                    'concepto' => trim($concept),
-                    'monto' => $amount,
-                    'metodo_pago' => $method,
-                ]);
-                $pdo->commit();
+                        if ($student->fetchColumn() === false) {
+                            $pdo->rollBack();
+                            $error = 'El alumno seleccionado no existe o está inactivo.';
+                            return;
+                        }
+
+                        $usesAutoIncrement = \App\Core\TableSchemaInspector::usesAutoIncrement($pdo, 'pagos', 'id_pago');
+                        if ($usesAutoIncrement) {
+                            $payment = $pdo->prepare(
+                                'INSERT INTO pagos
+                                    (id_alumno, concepto, monto, fecha_pago, metodo_pago)
+                                 VALUES
+                                    (:id_alumno, :concepto, :monto, CURRENT_DATE, :metodo_pago)'
+                            );
+                            $payment->execute([
+                                'id_alumno' => $studentId,
+                                'concepto' => trim($concept),
+                                'monto' => $amount,
+                                'metodo_pago' => $method,
+                            ]);
+                        } else {
+                            $nextId = \App\Core\LegacyIdAllocator::nextId($pdo, 'pagos', 'id_pago');
+                            $payment = $pdo->prepare(
+                                'INSERT INTO pagos
+                                    (id_pago, id_alumno, concepto, monto, fecha_pago, metodo_pago)
+                                 VALUES
+                                    (:id_pago, :id_alumno, :concepto, :monto, CURRENT_DATE, :metodo_pago)'
+                            );
+                            $payment->execute([
+                                'id_pago' => $nextId,
+                                'id_alumno' => $studentId,
+                                'concepto' => trim($concept),
+                                'monto' => $amount,
+                                'metodo_pago' => $method,
+                            ]);
+                        }
+
+                        $pdo->commit();
+                    } catch (\Throwable $exception) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        throw $exception;
+                    }
+                }
+            );
+            if ($error === null) {
                 $_SESSION['flash_pago'] = 'El pago se registró correctamente.';
                 header('Location: registrar_pago.php');
                 exit;
             }
         } catch (\PDOException $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
             error_log('Payment registration failed: ' . $exception->getMessage());
             http_response_code(503);
             $error = 'No se pudo registrar el pago. Verifica los datos y la estructura de la tabla.';
+        } catch (\App\Core\MigrationException $exception) {
+            error_log('Payment registration lock error: ' . $exception->getMessage());
+            http_response_code(503);
+            $error = 'No se pudo registrar el pago en este momento. Inténtalo de nuevo.';
         }
     }
 }
@@ -86,7 +122,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 try {
     $students = $pdo->query(
         'SELECT id_alumno, nombre, apellidos
-         FROM escuela_alumnos
+         FROM alumnos
          WHERE estatus = 1
          ORDER BY apellidos, nombre'
     )->fetchAll();

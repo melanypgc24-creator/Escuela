@@ -15,7 +15,7 @@ final class UserModel
     {
         $statement = $this->db->prepare(
             'SELECT id_usuario, correo, `password`, rol, id_alumno, id_profesor
-             FROM escuela_usuarios
+             FROM usuarios
              WHERE correo = :correo
              LIMIT 1'
         );

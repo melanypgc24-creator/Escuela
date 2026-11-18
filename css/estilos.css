@@ -143,7 +143,8 @@ p {
   font-family: Arial, sans-serif;
 }
 
-.login-layout {
+.login-layout,
+.register-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
   align-items: center;
@@ -293,6 +294,81 @@ p {
   border-color: #348354;
 }
 
+.password-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.password-input-wrap input {
+  padding-right: 50px;
+}
+
+.password-input-wrap input::-ms-reveal,
+.password-input-wrap input::-ms-clear {
+  display: none;
+}
+
+.password-input-wrap input::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.password-input-wrap input[aria-invalid="true"] {
+  padding-right: 76px;
+  background-position: right 52px center;
+}
+
+.auth-card .password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  padding: 7px;
+  margin: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #596273;
+  font-size: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.auth-card .password-toggle:hover {
+  background: #eef0f4;
+  color: #20252d;
+}
+
+.auth-card .password-toggle:focus-visible {
+  outline: 2px solid #53647d;
+  outline-offset: 1px;
+}
+
+.password-toggle svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.password-toggle svg[hidden] {
+  display: none;
+}
+
+.register-card .auth-field-feedback {
+  margin-top: -3px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .login-message {
   margin: 0 0 12px;
 }
@@ -324,7 +400,8 @@ p {
 }
 
 @media (max-width: 760px) {
-  .login-layout {
+  .login-layout,
+  .register-layout {
     grid-template-columns: 1fr;
     gap: 28px;
     max-width: 480px;

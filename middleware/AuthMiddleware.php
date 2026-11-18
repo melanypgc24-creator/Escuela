@@ -18,7 +18,7 @@ final class AuthMiddleware
 
         try {
             $statement = Database::connect()->prepare(
-                'SELECT rol FROM escuela_usuarios WHERE id_usuario = :id_usuario'
+                'SELECT rol FROM usuarios WHERE id_usuario = :id_usuario'
             );
             $statement->execute(['id_usuario' => $_SESSION['id_usuario']]);
             $role = $statement->fetchColumn();

@@ -28,7 +28,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         || !hash_equals($csrfToken, $providedToken)) {
         http_response_code(403);
         $error = 'La solicitud venció. Recarga la página e inténtalo de nuevo.';
-    } elseif ($userId === false || $userId < 1 || !is_string($role) || !in_array($role, $allowedRoles, true)) {
+    } elseif ($userId === false || $userId < 0 || !is_string($role) || !in_array($role, $allowedRoles, true)) {
         $error = 'El usuario o el rol seleccionado no son válidos.';
     } elseif ((int) $userId === (int) $_SESSION['id_usuario'] && $role !== 'administrador') {
         $error = 'No puedes quitarte a ti mismo el rol de administrador.';
@@ -36,7 +36,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         try {
             $pdo->beginTransaction();
             $target = $pdo->prepare(
-                'SELECT id_usuario, rol FROM escuela_usuarios WHERE id_usuario = :id_usuario FOR UPDATE'
+                'SELECT id_usuario, rol FROM usuarios WHERE id_usuario = :id_usuario FOR UPDATE'
             );
             $target->execute(['id_usuario' => $userId]);
             $targetUser = $target->fetch();
@@ -46,14 +46,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $error = 'No se encontró el usuario que intentas actualizar.';
             } elseif ($targetUser['rol'] === 'administrador' && $role !== 'administrador') {
                 $admins = $pdo->query(
-                    "SELECT id_usuario FROM escuela_usuarios WHERE rol = 'administrador' FOR UPDATE"
+                    "SELECT id_usuario FROM usuarios WHERE rol = 'administrador' FOR UPDATE"
                 )->fetchAll();
                 if (count($admins) <= 1) {
                     $pdo->rollBack();
                     $error = 'No puedes quitar el rol al único administrador del sistema.';
                 } else {
                     $update = $pdo->prepare(
-                        'UPDATE escuela_usuarios SET rol = :rol WHERE id_usuario = :id_usuario'
+                        'UPDATE usuarios SET rol = :rol WHERE id_usuario = :id_usuario'
                     );
                     $update->execute(['rol' => $role, 'id_usuario' => $userId]);
                     $pdo->commit();
@@ -61,7 +61,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
             } else {
                 $update = $pdo->prepare(
-                    'UPDATE escuela_usuarios SET rol = :rol WHERE id_usuario = :id_usuario'
+                    'UPDATE usuarios SET rol = :rol WHERE id_usuario = :id_usuario'
                 );
                 $update->execute(['rol' => $role, 'id_usuario' => $userId]);
                 $pdo->commit();
@@ -81,7 +81,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 try {
     $users = $pdo->query(
         'SELECT id_usuario, correo, rol
-         FROM escuela_usuarios
+         FROM usuarios
          ORDER BY id_usuario DESC'
     )->fetchAll();
 } catch (\PDOException $exception) {

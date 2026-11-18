@@ -11,6 +11,34 @@
         const confirmation = form.querySelector('[name="password_confirmation"]');
         let submitAttempted = false;
 
+        const escapeSelector = (value) => {
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(value);
+            }
+            return value.replace(/([^\w-])/g, '\\$1');
+        };
+
+        form.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+            const inputId = toggle.getAttribute('aria-controls');
+            const input = inputId ? form.querySelector(`#${escapeSelector(inputId)}`) : null;
+
+            if (!input) {
+                return;
+            }
+
+            toggle.addEventListener('click', () => {
+                const isVisible = input.type === 'text';
+                input.type = isVisible ? 'password' : 'text';
+                const showLabel = toggle.getAttribute('data-show-label') || 'Mostrar contraseña';
+                const hideLabel = toggle.getAttribute('data-hide-label') || 'Ocultar contraseña';
+                toggle.setAttribute('aria-pressed', String(!isVisible));
+                toggle.setAttribute('aria-label', isVisible ? showLabel : hideLabel);
+                toggle.title = isVisible ? showLabel : hideLabel;
+                toggle.querySelector('[data-eye-open]').hidden = isVisible;
+                toggle.querySelector('[data-eye-closed]').hidden = !isVisible;
+            });
+        });
+
         const showFeedback = (input, message, invalid) => {
             if (!input) {
                 return;
@@ -77,10 +105,22 @@
 
             const passwordLength = Array.from(password.value).length;
             const remaining = Math.max(0, 8 - passwordLength);
-            const isValid = remaining === 0;
+            const hasNumber = /\d/.test(password.value);
+            const hasSpecialCharacter = /[^\p{L}\p{N}\s]/u.test(password.value);
+            const hasNumberOrSpecialCharacter = hasNumber || hasSpecialCharacter;
+            const isValid = remaining === 0 && hasNumberOrSpecialCharacter;
+            const requirements = [];
+
+            if (remaining > 0) {
+                requirements.push(`8 caracteres (te falta${remaining === 1 ? '' : 'n'} ${remaining})`);
+            }
+            if (!hasNumberOrSpecialCharacter) {
+                requirements.push('al menos un número o carácter especial');
+            }
+
             const message = isValid
-                ? 'La contraseña tiene al menos 8 caracteres.'
-                : `La contraseña debe tener 8 caracteres. Te falta${remaining === 1 ? '' : 'n'} ${remaining}.`;
+                ? 'Contraseña válida: cumple los requisitos.'
+                : `Agrega ${requirements.join(' y ')}.`;
             showFeedback(password, message, !isValid);
 
             if (confirmation && confirmation.value !== '') {
