@@ -15,14 +15,14 @@ final class Router
         string $pattern,
         callable $handler,
         bool $authenticated = true,
-        bool $administratorOnly = false
+        bool|string $authorization = false
     ): void {
         $this->routes[] = [
             'method' => strtoupper($method),
             'pattern' => $pattern,
             'handler' => $handler,
             'authenticated' => $authenticated,
-            'administrator_only' => $administratorOnly,
+            'authorization' => $authorization,
         ];
     }
 
@@ -37,8 +37,10 @@ final class Router
             try {
                 if ($route['authenticated']) {
                     AuthMiddleware::requireAuthenticated();
-                    if ($route['administrator_only']) {
+                    if ($route['authorization'] === true) {
                         AuthMiddleware::requireAdministrator();
+                    } elseif (is_string($route['authorization'])) {
+                        AuthMiddleware::requirePermission($route['authorization']);
                     }
                     if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
                         AuthMiddleware::requireValidCsrfToken();

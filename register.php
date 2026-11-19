@@ -61,6 +61,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                     'correo' => $email,
                                     'password' => password_hash($password, PASSWORD_DEFAULT),
                                 ]);
+                                $userId = (int) $pdo->lastInsertId();
+                                if ($userId < 1) {
+                                    throw new \RuntimeException('La base de datos no devolvió un identificador de usuario válido.');
+                                }
                             } else {
                                 $nextId = \App\Core\LegacyIdAllocator::nextId($pdo, 'usuarios', 'id_usuario');
                                 $statement = $pdo->prepare(
@@ -74,8 +78,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                     'correo' => $email,
                                     'password' => password_hash($password, PASSWORD_DEFAULT),
                                 ]);
+                                $userId = $nextId;
                             }
 
+                            (new \App\Models\AuditModel($pdo))->record(
+                                $userId,
+                                'registrar_cuenta',
+                                'usuarios',
+                                $userId,
+                                ['rol' => 'alumno']
+                            );
                             $pdo->commit();
                             session_regenerate_id(true);
                             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

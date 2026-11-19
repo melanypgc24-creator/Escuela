@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/includes/auth_check.php';
-require_role('maestro');
+require_permission('classes.read_assigned');
 
 $csrfToken = htmlspecialchars((string) ($_SESSION['csrf_token'] ?? ''), ENT_QUOTES, 'UTF-8');
 $email = htmlspecialchars((string) ($_SESSION['correo'] ?? ''), ENT_QUOTES, 'UTF-8');

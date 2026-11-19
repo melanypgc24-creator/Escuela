@@ -7,6 +7,7 @@ use App\Core\DatabaseLock;
 use App\Core\LegacyIdAllocator;
 use App\Core\TableSchemaInspector;
 use PDO;
+use RuntimeException;
 
 final class AdminModel
 {
@@ -46,6 +47,9 @@ final class AdminModel
                             'password_hash' => password_hash($password, PASSWORD_DEFAULT),
                         ]);
                         $id = (int) $this->db->lastInsertId();
+                        if ($id < 1) {
+                            throw new RuntimeException('La base de datos no devolvió un identificador de usuario válido.');
+                        }
                     } else {
                         $nextId = LegacyIdAllocator::nextId($this->db, 'usuarios', 'id_usuario');
                         $statement = $this->db->prepare(

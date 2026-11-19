@@ -16,4 +16,14 @@ final class DebtController
     {
         JsonResponse::send(['data' => $this->debts->all()]);
     }
+
+    public function mine(): void
+    {
+        $studentId = $_SESSION['id_alumno'] ?? null;
+        if (!is_int($studentId)) {
+            JsonResponse::send(['error' => 'La cuenta no está vinculada a una ficha de alumno.'], 403);
+            return;
+        }
+        JsonResponse::send(['data' => $this->debts->allForStudent($studentId)]);
+    }
 }

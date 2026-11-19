@@ -1,67 +1,94 @@
 <?php
-require_once '../../config/database.php';
+declare(strict_types=1);
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $nombre_clase = $_POST['nombre_clase'];
-    $id_profesor = $_POST['id_profesor'];
-    $dias = $_POST['dias'];
-    $hora_inicio = $_POST['hora_inicio'];
-    $hora_fin = $_POST['hora_fin'];
-    $capacidad = $_POST['capacidad'];
+require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
+require_permission('classes.manage');
+require_once dirname(__DIR__, 2) . '/config/database.php';
 
-    $sql = "INSERT INTO clases (nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad) 
-            VALUES (:nombre_clase, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad)";
-    $stmt = $conexion->prepare($sql);
-    
-    $stmt->execute([
-        ':nombre_clase' => $nombre_clase,
-        ':id_profesor' => $id_profesor,
-        ':dias' => $dias,
-        ':hora_inicio' => $hora_inicio,
-        ':hora_fin' => $hora_fin,
-        ':capacidad' => $capacidad
-    ]);
-    
-    echo "<b>¡Clase guardada correctamente!</b> <a href='clases.php'>Volver a la lista</a><br><br>";
+$error = null;
+$input = $_POST;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    require_valid_csrf();
+    $name = $input['nombre_clase'] ?? null;
+    $professorId = filter_var($input['id_profesor'] ?? null, FILTER_VALIDATE_INT);
+    $days = $input['dias'] ?? null;
+    $start = $input['hora_inicio'] ?? null;
+    $end = $input['hora_fin'] ?? null;
+    $capacity = filter_var($input['capacidad'] ?? null, FILTER_VALIDATE_INT);
+
+    if (!is_string($name) || trim($name) === '' || mb_strlen(trim($name), 'UTF-8') > 100
+        || $professorId === false || $professorId < 0
+        || !is_string($days) || trim($days) === '' || mb_strlen(trim($days), 'UTF-8') > 50
+        || !is_string($start) || !preg_match('/^\d{2}:\d{2}$/D', $start)
+        || !is_string($end) || !preg_match('/^\d{2}:\d{2}$/D', $end) || $end <= $start
+        || $capacity === false || $capacity < 1) {
+        $error = 'Revisa el nombre, profesor, días, horario y capacidad de la clase.';
+    } else {
+        try {
+            $conexion->beginTransaction();
+            $insert = $conexion->prepare(
+                'INSERT INTO clases (nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad)
+                 VALUES (:nombre_clase, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad)'
+            );
+            $insert->execute([
+                'nombre_clase' => trim($name),
+                'id_profesor' => $professorId,
+                'dias' => trim($days),
+                'hora_inicio' => $start,
+                'hora_fin' => $end,
+                'capacidad' => $capacity,
+            ]);
+            $id = (int) $conexion->lastInsertId();
+            (new \App\Models\AuditModel($conexion))->record(
+                (int) $_SESSION['id_usuario'],
+                'crear',
+                'clases',
+                $id,
+                ['id_profesor' => $professorId, 'capacidad' => $capacity]
+            );
+            $conexion->commit();
+            header('Location: clases.php');
+            exit;
+        } catch (\Throwable $exception) {
+            if ($conexion->inTransaction()) {
+                $conexion->rollBack();
+            }
+            error_log('Class create failed: ' . $exception->getMessage());
+            http_response_code(503);
+            $error = 'No se pudo guardar la clase.';
+        }
+    }
 }
 
-$sql_profesores = "SELECT id_profesor, nombre, apellidos FROM profesor";
-$stmt_p = $conexion->prepare($sql_profesores);
-$stmt_p->execute();
-$profesores = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
-
-include '../../includes/header.php';
+$profesores = $conexion->query('SELECT id_profesor, nombre, apellidos FROM profesor ORDER BY apellidos, nombre')->fetchAll(PDO::FETCH_ASSOC);
+$escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+include dirname(__DIR__, 2) . '/includes/header.php';
 ?>
-<link rel="stylesheet" href="/Escuela/css/estilos.css">
-<h1>Crear Nueva Clase</h1>
-
-<form method="POST" action="">
-    <label>Nombre de la Clase (Ej. Fundamentos Gi):</label><br>
-    <input type="text" name="nombre_clase" required><br><br>
-
-    <label>Profesor a cargo:</label><br>
-    <select name="id_profesor" required>
-        <option value="">-- Seleccione un profesor --</option>
-        <?php foreach ($profesores as $profesor): ?>
-            <option value="<?php echo $profesor['id_profesor']; ?>">
-                <?php echo $profesor['nombre'] . ' ' . $profesor['apellidos']; ?>
-            </option>
-        <?php endforeach; ?>
-    </select><br><br>
-
-    <label>Días de entrenamiento:</label><br>
-    <input type="text" name="dias" placeholder="Lunes, Miércoles y Viernes" required><br><br>
-
-    <label>Hora de Inicio:</label><br>
-    <input type="time" name="hora_inicio" required><br><br>
-
-    <label>Hora de Fin:</label><br>
-    <input type="time" name="hora_fin" required><br><br>
-
-    <label>Capacidad Máxima de Alumnos:</label><br>
-    <input type="number" name="capacidad" min="1" value="20" required><br><br>
-
-    <button type="submit">Guardar Clase</button>
-</form>
-
-<?php include '../../includes/footer.php'; ?>
+<main class="admin-main">
+    <h1>Crear clase</h1>
+    <?php if ($error !== null): ?><p class="auth-error" role="alert"><?= $escape($error) ?></p><?php endif; ?>
+    <form method="post" action="">
+        <input type="hidden" name="csrf_token" value="<?= $escape(csrf_token()) ?>">
+        <label for="nombre_clase">Nombre de la clase</label>
+        <input id="nombre_clase" name="nombre_clase" maxlength="100" required value="<?= $escape($input['nombre_clase'] ?? '') ?>">
+        <label for="id_profesor">Profesor</label>
+        <select id="id_profesor" name="id_profesor" required>
+            <option value="">Selecciona un profesor</option>
+            <?php foreach ($profesores as $profesor): ?>
+                <option value="<?= $escape($profesor['id_profesor']) ?>" <?= (string) ($input['id_profesor'] ?? '') === (string) $profesor['id_profesor'] ? 'selected' : '' ?>>
+                    <?= $escape($profesor['nombre'] . ' ' . $profesor['apellidos']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <label for="dias">Días</label>
+        <input id="dias" name="dias" maxlength="50" required value="<?= $escape($input['dias'] ?? '') ?>">
+        <label for="hora_inicio">Hora de inicio</label>
+        <input id="hora_inicio" name="hora_inicio" type="time" required value="<?= $escape($input['hora_inicio'] ?? '') ?>">
+        <label for="hora_fin">Hora de fin</label>
+        <input id="hora_fin" name="hora_fin" type="time" required value="<?= $escape($input['hora_fin'] ?? '') ?>">
+        <label for="capacidad">Capacidad</label>
+        <input id="capacidad" name="capacidad" type="number" min="1" required value="<?= $escape($input['capacidad'] ?? 20) ?>">
+        <button type="submit">Guardar clase</button>
+    </form>
+</main>
+<?php include dirname(__DIR__, 2) . '/includes/footer.php'; ?>

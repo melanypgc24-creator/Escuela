@@ -1,91 +1,128 @@
 <?php
-require_once '../../config/database.php';
+declare(strict_types=1);
 
-if (!isset($_GET['id'])) {
-    die("Error: No se proporcionó el ID de la clase.");
+require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
+require_permission('classes.manage');
+require_once dirname(__DIR__, 2) . '/config/database.php';
+
+$classId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
+if ($classId === false || $classId === null || $classId < 0) {
+    http_response_code(400);
+    exit('Identificador de clase inválido.');
 }
-$id_clase = $_GET['id'];
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $nombre_clase = $_POST['nombre_clase'];
-    $id_profesor = $_POST['id_profesor'];
-    $dias = $_POST['dias'];
-    $hora_inicio = $_POST['hora_inicio'];
-    $hora_fin = $_POST['hora_fin'];
-    $capacidad = $_POST['capacidad'];
-
-    $sql_update = "UPDATE clases SET 
-                    nombre_clase = :nombre_clase, 
-                    id_profesor = :id_profesor, 
-                    dias = :dias, 
-                    hora_inicio = :hora_inicio, 
-                    hora_fin = :hora_fin, 
-                    capacidad = :capacidad 
-                   WHERE id_clase = :id_clase";
-                   
-    $stmt_update = $conexion->prepare($sql_update);
-    $stmt_update->execute([
-        ':nombre_clase' => $nombre_clase,
-        ':id_profesor' => $id_profesor,
-        ':dias' => $dias,
-        ':hora_inicio' => $hora_inicio,
-        ':hora_fin' => $hora_fin,
-        ':capacidad' => $capacidad,
-        ':id_clase' => $id_clase
-    ]);
-    
-    echo "<b>¡Clase actualizada correctamente!</b> <a href='lista.php'>Volver a la lista</a><br><br>";
+$find = $conexion->prepare('SELECT * FROM clases WHERE id_clase = :id_clase');
+$find->execute(['id_clase' => $classId]);
+$clase = $find->fetch(PDO::FETCH_ASSOC);
+if ($clase === false) {
+    http_response_code(404);
+    exit('La clase no existe.');
 }
 
-$sql_clase = "SELECT * FROM clases WHERE id_clase = :id_clase";
-$stmt_clase = $conexion->prepare($sql_clase);
-$stmt_clase->execute([':id_clase' => $id_clase]);
-$clase = $stmt_clase->fetch(PDO::FETCH_ASSOC);
+$error = null;
+$input = $_POST;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    require_valid_csrf();
+    $name = $input['nombre_clase'] ?? null;
+    $professorId = filter_var($input['id_profesor'] ?? null, FILTER_VALIDATE_INT);
+    $days = $input['dias'] ?? null;
+    $start = $input['hora_inicio'] ?? null;
+    $end = $input['hora_fin'] ?? null;
+    $capacity = filter_var($input['capacidad'] ?? null, FILTER_VALIDATE_INT);
 
-if (!$clase) {
-    die("Error: La clase no existe.");
+    if (!is_string($name) || trim($name) === '' || mb_strlen(trim($name), 'UTF-8') > 100
+        || $professorId === false || $professorId < 0
+        || !is_string($days) || trim($days) === '' || mb_strlen(trim($days), 'UTF-8') > 50
+        || !is_string($start) || !preg_match('/^\d{2}:\d{2}$/D', $start)
+        || !is_string($end) || !preg_match('/^\d{2}:\d{2}$/D', $end) || $end <= $start
+        || $capacity === false || $capacity < 1) {
+        $error = 'Revisa el nombre, profesor, días, horario y capacidad de la clase.';
+    } else {
+        try {
+            $conexion->beginTransaction();
+            $lockClass = $conexion->prepare('SELECT id_clase FROM clases WHERE id_clase = :id_clase FOR UPDATE');
+            $lockClass->execute(['id_clase' => $classId]);
+            if ($lockClass->fetchColumn() === false) {
+                throw new \DomainException('La clase ya no existe.');
+            }
+            $enrolled = $conexion->prepare(
+                'SELECT COUNT(*) FROM clases_alumnos WHERE id_clase = :id_clase AND estado = "activa"'
+            );
+            $enrolled->execute(['id_clase' => $classId]);
+            if ($capacity < (int) $enrolled->fetchColumn()) {
+                throw new \DomainException('La capacidad no puede ser menor que las inscripciones activas.');
+            }
+            $update = $conexion->prepare(
+                'UPDATE clases
+                 SET nombre_clase = :nombre, id_profesor = :id_profesor, dias = :dias,
+                     hora_inicio = :inicio, hora_fin = :fin, capacidad = :capacidad
+                 WHERE id_clase = :id_clase'
+            );
+            $update->execute([
+                'nombre' => trim($name),
+                'id_profesor' => $professorId,
+                'dias' => trim($days),
+                'inicio' => $start,
+                'fin' => $end,
+                'capacidad' => $capacity,
+                'id_clase' => $classId,
+            ]);
+            if ($update->rowCount() > 0) {
+                (new \App\Models\AuditModel($conexion))->record(
+                    (int) $_SESSION['id_usuario'],
+                    'actualizar',
+                    'clases',
+                    $classId,
+                    ['id_profesor' => $professorId, 'capacidad' => $capacity]
+                );
+            }
+            $conexion->commit();
+            header('Location: clases.php');
+            exit;
+        } catch (\DomainException $exception) {
+            if ($conexion->inTransaction()) {
+                $conexion->rollBack();
+            }
+            $error = $exception->getMessage();
+        } catch (\Throwable $exception) {
+            if ($conexion->inTransaction()) {
+                $conexion->rollBack();
+            }
+            error_log('Class update failed: ' . $exception->getMessage());
+            http_response_code(503);
+            $error = 'No se pudo actualizar la clase.';
+        }
+    }
 }
 
-
-$sql_profesores = "SELECT id_profesor, nombre, apellidos FROM profesor";
-$stmt_p = $conexion->prepare($sql_profesores);
-$stmt_p->execute();
-$profesores = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
-
-include '../../includes/header.php';
+$profesores = $conexion->query('SELECT id_profesor, nombre, apellidos FROM profesor ORDER BY apellidos, nombre')->fetchAll(PDO::FETCH_ASSOC);
+$value = static fn (string $key): mixed => $input[$key] ?? $clase[$key] ?? null;
+$escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+include dirname(__DIR__, 2) . '/includes/header.php';
 ?>
-//estilos
-<link rel="stylesheet" href="/Escuela/css/estilos.css">
-<h1>Editar datos de la Clase</h1>
-
-<form method="POST" action="">
-    <label>Nombre de la Clase:</label><br>
-    <input type="text" name="nombre_clase" value="<?php echo htmlspecialchars($clase['nombre_clase']); ?>" required><br><br>
-
-    <label>Profesor a cargo:</label><br>
-    <select name="id_profesor" required>
-        <option value="">-- Seleccione un profesor --</option>
-        <?php foreach ($profesores as $profesor): ?>
-            <option value="<?php echo $profesor['id_profesor']; ?>" 
-            <?php echo ($clase['id_profesor'] == $profesor['id_profesor']) ? 'selected' : ''; ?>>
-                <?php echo $profesor['nombre'] . ' ' . $profesor['apellidos']; ?>
-            </option>
-        <?php endforeach; ?>
-    </select><br><br>
-
-    <label>Días de entrenamiento:</label><br>
-    <input type="text" name="dias" value="<?php echo htmlspecialchars($clase['dias']); ?>" required><br><br>
-
-    <label>Hora de Inicio:</label><br>
-    <input type="time" name="hora_inicio" value="<?php echo $clase['hora_inicio']; ?>" required><br><br>
-
-    <label>Hora de Fin:</label><br>
-    <input type="time" name="hora_fin" value="<?php echo $clase['hora_fin']; ?>" required><br><br>
-
-    <label>Capacidad Máxima de Alumnos:</label><br>
-    <input type="number" name="capacidad" min="1" value="<?php echo $clase['capacidad']; ?>" required><br><br>
-
-    <button type="submit">Actualizar Clase</button>
-</form>
-
-<?php include '../../includes/footer.php'; ?>
+<main class="admin-main">
+    <h1>Editar clase</h1>
+    <?php if ($error !== null): ?><p class="auth-error" role="alert"><?= $escape($error) ?></p><?php endif; ?>
+    <form method="post" action="">
+        <input type="hidden" name="csrf_token" value="<?= $escape(csrf_token()) ?>">
+        <label for="nombre_clase">Nombre de la clase</label>
+        <input id="nombre_clase" name="nombre_clase" maxlength="100" required value="<?= $escape($value('nombre_clase')) ?>">
+        <label for="id_profesor">Profesor</label>
+        <select id="id_profesor" name="id_profesor" required>
+            <?php foreach ($profesores as $profesor): ?>
+                <option value="<?= $escape($profesor['id_profesor']) ?>" <?= (string) $value('id_profesor') === (string) $profesor['id_profesor'] ? 'selected' : '' ?>>
+                    <?= $escape($profesor['nombre'] . ' ' . $profesor['apellidos']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <label for="dias">Días</label>
+        <input id="dias" name="dias" maxlength="50" required value="<?= $escape($value('dias')) ?>">
+        <label for="hora_inicio">Hora de inicio</label>
+        <input id="hora_inicio" name="hora_inicio" type="time" required value="<?= $escape($value('hora_inicio')) ?>">
+        <label for="hora_fin">Hora de fin</label>
+        <input id="hora_fin" name="hora_fin" type="time" required value="<?= $escape($value('hora_fin')) ?>">
+        <label for="capacidad">Capacidad</label>
+        <input id="capacidad" name="capacidad" type="number" min="1" required value="<?= $escape($value('capacidad')) ?>">
+        <button type="submit">Guardar cambios</button>
+    </form>
+</main>
+<?php include dirname(__DIR__, 2) . '/includes/footer.php'; ?>

@@ -9,7 +9,9 @@ $error = null;
 $email = '';
 $destinations = [
     'administrador' => 'dashboard_admin.php',
+    'director' => 'dashboard_director.php',
     'maestro' => 'panel_maestro.php',
+    'recepcionista' => 'panel_recepcionista.php',
     'alumno' => 'panel_alumno.php',
 ];
 

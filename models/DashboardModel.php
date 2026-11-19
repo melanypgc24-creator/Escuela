@@ -14,10 +14,24 @@ final class DashboardModel
     public function summary(): array
     {
         return [
-            'active_students' => (int) $this->db->query("SELECT COUNT(*) FROM students WHERE status = 'active'")->fetchColumn(),
-            'active_memberships' => (int) $this->db->query('SELECT COUNT(*) FROM memberships WHERE active = 1')->fetchColumn(),
-            'pending_debts' => (int) $this->db->query("SELECT COUNT(*) FROM debts WHERE status = 'pending'")->fetchColumn(),
-            'payments_this_month' => (float) $this->db->query("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE paid_at >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND paid_at < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH)")->fetchColumn(),
+            'alumnos_activos' => (int) $this->db->query('SELECT COUNT(*) FROM alumnos WHERE estatus = 1')->fetchColumn(),
+            'tarifas_activas' => (int) $this->db->query('SELECT COUNT(*) FROM tarifas_mensuales WHERE activa = 1')->fetchColumn(),
+            'cargos_pendientes' => (int) $this->db->query(
+                'SELECT COUNT(*) FROM cargos_mensuales WHERE estado IN ("pendiente", "vencido")'
+            )->fetchColumn(),
+            'pagos_activos_mes' => (string) $this->db->query(
+                'SELECT COALESCE(SUM(monto), 0)
+                 FROM pagos
+                 WHERE estado = "activo"
+                   AND fecha_pago >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
+                   AND fecha_pago < DATE_ADD(DATE_FORMAT(CURRENT_DATE, "%Y-%m-01"), INTERVAL 1 MONTH)'
+            )->fetchColumn(),
+            'pagos_historicos_sin_clasificar_mes' => (int) $this->db->query(
+                'SELECT COUNT(*) FROM pagos
+                 WHERE estado IS NULL
+                   AND fecha_pago >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
+                   AND fecha_pago < DATE_ADD(DATE_FORMAT(CURRENT_DATE, "%Y-%m-01"), INTERVAL 1 MONTH)'
+            )->fetchColumn(),
         ];
     }
 }

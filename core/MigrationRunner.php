@@ -229,6 +229,7 @@ final class MigrationRunner
                     }
 
                     $this->assertChecksumUnchanged($migration);
+                    $this->assertPreflight($migration);
 
                     if ($migration['transactional']) {
                         $this->executeTransactionalMigration($migration);
@@ -263,7 +264,7 @@ final class MigrationRunner
     }
 
     /**
-     * @return list<array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>}>
+     * @return list<array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>,preflight:list<array{sql:string,expected:int,message:string}>}>
      */
     private function discoverAndValidate(): array
     {
@@ -418,7 +419,7 @@ final class MigrationRunner
     }
 
     /**
-     * @return array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>}
+     * @return array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>,preflight:list<array{sql:string,expected:int,message:string}>}
      */
     private function loadMigrationFromFile(string $path): array
     {
@@ -444,6 +445,7 @@ final class MigrationRunner
         $description = $definition['description'] ?? null;
         $transactional = $definition['transactional'] ?? false;
         $statements = $definition['statements'] ?? null;
+        $preflight = $definition['preflight'] ?? [];
 
         if (!is_string($id) || preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,190}$/D', trim($id)) !== 1) {
             throw new MigrationException(sprintf('La migración %s no tiene un id válido (máximo 191 caracteres ASCII).', $realPath));
@@ -457,6 +459,9 @@ final class MigrationRunner
         if (!is_array($statements) || $statements === []) {
             throw new MigrationException(sprintf('La migración %s debe incluir statements no vacío como arreglo.', $realPath));
         }
+        if (!is_array($preflight)) {
+            throw new MigrationException(sprintf('La migración %s debe declarar preflight como arreglo.', $realPath));
+        }
 
         $normalized = [];
         foreach ($statements as $sql) {
@@ -464,6 +469,23 @@ final class MigrationRunner
                 throw new MigrationException(sprintf('La migración %s contiene una sentencia inválida.', $realPath));
             }
             $normalized[] = trim($sql);
+        }
+
+        $normalizedPreflight = [];
+        foreach ($preflight as $check) {
+            if (!is_array($check) || !is_string($check['sql'] ?? null)
+                || preg_match('/^\s*SELECT\b/i', $check['sql']) !== 1
+                || strpos($check['sql'], ';') !== false
+                || !is_int($check['expected'] ?? null)
+                || !is_string($check['message'] ?? null)
+                || trim($check['message']) === '') {
+                throw new MigrationException(sprintf('La migración %s contiene una comprobación preflight inválida.', $realPath));
+            }
+            $normalizedPreflight[] = [
+                'sql' => trim($check['sql']),
+                'expected' => $check['expected'],
+                'message' => trim($check['message']),
+            ];
         }
 
         $checksum = hash_file('sha256', $realPath);
@@ -479,7 +501,29 @@ final class MigrationRunner
             'checksum' => $checksum,
             'transactional' => $transactional,
             'statements' => $normalized,
+            'preflight' => $normalizedPreflight,
         ];
+    }
+
+    /**
+     * @param array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>,preflight:list<array{sql:string,expected:int,message:string}>} $migration
+     */
+    private function assertPreflight(array $migration): void
+    {
+        foreach ($migration['preflight'] as $check) {
+            $actual = $this->db->query($check['sql'])->fetchColumn();
+            if (!is_numeric($actual) || (int) $actual !== $check['expected']) {
+                throw new MigrationException(
+                    sprintf(
+                        'Preflight rechazó la migración %s: %s (resultado=%s, esperado=%d). No se ejecutó SQL de la migración.',
+                        $migration['id'],
+                        $check['message'],
+                        var_export($actual, true),
+                        $check['expected']
+                    )
+                );
+            }
+        }
     }
 
     /**

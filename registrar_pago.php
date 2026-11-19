@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use App\Models\PaymentModel;
+
 require __DIR__ . '/includes/auth_check.php';
-require_role('administrador');
+require_permission('payments.create');
 
 header('Cache-Control: no-store');
 
@@ -10,7 +12,9 @@ $error = null;
 $success = $_SESSION['flash_pago'] ?? null;
 unset($_SESSION['flash_pago']);
 $csrfToken = $_SESSION['csrf_token'] ?? '';
-$paymentMethods = ['Efectivo', 'Transferencia', 'Tarjeta'];
+$paymentMethods = ($_SESSION['rol'] ?? null) === 'recepcionista'
+    ? ['Efectivo', 'Tarjeta']
+    : ['Efectivo', 'Transferencia', 'Tarjeta'];
 
 try {
     $pdo = require __DIR__ . '/config/conexion.php';
@@ -23,9 +27,9 @@ try {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $providedToken = $_POST['csrf_token'] ?? '';
     $studentId = filter_var($_POST['id_alumno'] ?? null, FILTER_VALIDATE_INT);
-    $concept = $_POST['concepto'] ?? '';
     $amount = $_POST['monto'] ?? '';
     $method = $_POST['metodo_pago'] ?? '';
+    $payerName = $_POST['nombre_pagador'] ?? '';
 
     if (!is_string($providedToken) || !is_string($csrfToken) || $csrfToken === ''
         || !hash_equals($csrfToken, $providedToken)) {
@@ -33,88 +37,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $error = 'La solicitud venció. Recarga la página e inténtalo de nuevo.';
     } elseif ($studentId === false || $studentId < 0) {
         $error = 'Selecciona un alumno válido.';
-    } elseif (!is_string($concept) || trim($concept) === '' || mb_strlen(trim($concept), 'UTF-8') > 100) {
-        $error = 'Escribe un concepto de hasta 100 caracteres.';
     } elseif (!is_string($amount) || !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $amount)
         || (float) $amount <= 0) {
         $error = 'Escribe un monto mayor que cero, con hasta 8 enteros y 2 decimales.';
     } elseif (!is_string($method) || !in_array($method, $paymentMethods, true)) {
         $error = 'Selecciona un método de pago válido.';
+    } elseif (!is_string($payerName) || trim($payerName) === '' || mb_strlen(trim($payerName), 'UTF-8') > 200) {
+        $error = 'Escribe el nombre de quien realiza el pago.';
     } else {
         try {
-            \App\Core\DatabaseLock::run(
-                $pdo,
-                \App\Core\LegacyIdAllocator::lockNameForTable('pagos'),
-                static function () use ($pdo, $studentId, $concept, $amount, $method, &$error): void {
-                    $pdo->beginTransaction();
-                    try {
-                        $student = $pdo->prepare(
-                            'SELECT id_alumno
-                             FROM alumnos
-                             WHERE id_alumno = :id_alumno AND estatus = 1
-                             FOR UPDATE'
-                        );
-                        $student->execute(['id_alumno' => $studentId]);
-
-                        if ($student->fetchColumn() === false) {
-                            $pdo->rollBack();
-                            $error = 'El alumno seleccionado no existe o está inactivo.';
-                            return;
-                        }
-
-                        $usesAutoIncrement = \App\Core\TableSchemaInspector::usesAutoIncrement($pdo, 'pagos', 'id_pago');
-                        if ($usesAutoIncrement) {
-                            $payment = $pdo->prepare(
-                                'INSERT INTO pagos
-                                    (id_alumno, concepto, monto, fecha_pago, metodo_pago)
-                                 VALUES
-                                    (:id_alumno, :concepto, :monto, CURRENT_DATE, :metodo_pago)'
-                            );
-                            $payment->execute([
-                                'id_alumno' => $studentId,
-                                'concepto' => trim($concept),
-                                'monto' => $amount,
-                                'metodo_pago' => $method,
-                            ]);
-                        } else {
-                            $nextId = \App\Core\LegacyIdAllocator::nextId($pdo, 'pagos', 'id_pago');
-                            $payment = $pdo->prepare(
-                                'INSERT INTO pagos
-                                    (id_pago, id_alumno, concepto, monto, fecha_pago, metodo_pago)
-                                 VALUES
-                                    (:id_pago, :id_alumno, :concepto, :monto, CURRENT_DATE, :metodo_pago)'
-                            );
-                            $payment->execute([
-                                'id_pago' => $nextId,
-                                'id_alumno' => $studentId,
-                                'concepto' => trim($concept),
-                                'monto' => $amount,
-                                'metodo_pago' => $method,
-                            ]);
-                        }
-
-                        $pdo->commit();
-                    } catch (\Throwable $exception) {
-                        if ($pdo->inTransaction()) {
-                            $pdo->rollBack();
-                        }
-                        throw $exception;
-                    }
-                }
-            );
-            if ($error === null) {
-                $_SESSION['flash_pago'] = 'El pago se registró correctamente.';
-                header('Location: registrar_pago.php');
-                exit;
-            }
+            $paymentId = (new PaymentModel($pdo))->create([
+                'id_alumno' => $studentId,
+                'monto' => $amount,
+                'fecha_pago' => date('Y-m-d'),
+                'metodo_pago' => strtolower($method),
+                'nombre_pagador' => trim($payerName),
+                'id_alumno_pagador' => null,
+                'id_usuario_registra' => (int) $_SESSION['id_usuario'],
+            ]);
+            $_SESSION['flash_pago'] = 'El pago se registró correctamente. Referencia: ' . $paymentId . '.';
+            header('Location: registrar_pago.php');
+            exit;
+        } catch (\DomainException $exception) {
+            http_response_code(422);
+            $error = $exception->getMessage();
         } catch (\PDOException $exception) {
             error_log('Payment registration failed: ' . $exception->getMessage());
             http_response_code(503);
-            $error = 'No se pudo registrar el pago. Verifica los datos y la estructura de la tabla.';
+            $error = 'No se pudo registrar el pago. Verifica que las migraciones del esquema español estén aplicadas.';
         } catch (\App\Core\MigrationException $exception) {
             error_log('Payment registration lock error: ' . $exception->getMessage());
             http_response_code(503);
             $error = 'No se pudo registrar el pago en este momento. Inténtalo de nuevo.';
+        } catch (\Throwable $exception) {
+            error_log('Payment registration failed: ' . $exception->getMessage());
+            http_response_code(500);
+            $error = 'No se pudo registrar el pago.';
         }
     }
 }
@@ -144,9 +102,9 @@ $escape = static fn (mixed $value): string => htmlspecialchars((string) ($value 
 </head>
 <body class="auth-page">
     <main class="auth-card payment-card">
-        <a class="auth-home-link" href="dashboard_admin.php">Volver al panel</a>
+        <a class="auth-home-link" href="<?= ($_SESSION['rol'] ?? '') === 'recepcionista' ? 'panel_recepcionista.php' : 'dashboard_admin.php' ?>">Volver al panel</a>
         <h1>Registrar pago</h1>
-        <p>Registra un cobro asociado a un alumno activo.</p>
+        <p>Registra un pago y aplícalo a los cargos pendientes más antiguos del alumno.</p>
 
         <?php if ($error !== null): ?>
             <p class="auth-error" role="alert"><?= $escape($error) ?></p>
@@ -171,10 +129,9 @@ $escape = static fn (mixed $value): string => htmlspecialchars((string) ($value 
                     <?php endforeach; ?>
                 </select>
 
-                <label for="concepto">Concepto</label>
-                <input id="concepto" name="concepto" type="text" maxlength="100" required
-                    placeholder="Mensualidad, examen de cinta..."
-                    value="<?= $escape($_POST['concepto'] ?? '') ?>">
+                <label for="nombre_pagador">Nombre de quien realiza el pago</label>
+                <input id="nombre_pagador" name="nombre_pagador" type="text" maxlength="200" required
+                    value="<?= $escape($_POST['nombre_pagador'] ?? '') ?>">
 
                 <label for="monto">Monto</label>
                 <input id="monto" name="monto" type="number" min="0.01" max="99999999.99" step="0.01" required
