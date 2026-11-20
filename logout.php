@@ -13,8 +13,12 @@ $providedToken = $_POST['csrf_token'] ?? '';
 $expectedToken = $_SESSION['csrf_token'] ?? '';
 if (!is_string($providedToken) || !is_string($expectedToken) || $expectedToken === ''
     || !hash_equals($expectedToken, $providedToken)) {
-    http_response_code(403);
-    exit('La solicitud no pudo validarse. Recarga la página e inténtalo de nuevo.');
+    // La sesión sigue intacta: no se cierra con un token inválido, pero se
+    // devuelve al usuario a una página que imprime el token vigente.
+    error_log('Logout CSRF mismatch (session ' . (empty($_SESSION['id_usuario']) ? 'sin usuario' : 'activa') . ').');
+    header('Cache-Control: no-store');
+    header('Location: ' . (empty($_SESSION['id_usuario']) ? 'login.php' : 'dashboard.php'));
+    exit;
 }
 
 $_SESSION = [];

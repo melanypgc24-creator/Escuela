@@ -8,6 +8,9 @@ use Throwable;
 
 final class MigrationRunner
 {
+    // Espera máxima por el bloqueo de migraciones: si hay otra en curso se falla rápido en vez de esperar mucho.
+    public const LOCK_TIMEOUT_SECONDS = 5;
+
     private string $migrationDirectoryRealpath;
 
     public function __construct(
@@ -47,10 +50,8 @@ final class MigrationRunner
         $seenStateIds = [];
         foreach ($this->migrationPaths() as $path) {
             $file = basename($path);
-            $checksum = hash_file('sha256', $path);
-            if (!is_string($checksum)) {
-                throw new MigrationException(sprintf('No se pudo calcular checksum de %s.', $path));
-            }
+            $sums = self::checksumsFor($path);
+            $checksum = $sums['canonical'];
 
             $executedRow = $executedByFile[$file] ?? null;
             $displayId = $executedRow['id_migracion'] ?? pathinfo($file, PATHINFO_FILENAME);
@@ -65,16 +66,16 @@ final class MigrationRunner
             $detail = $stateRow['detalle'] ?? null;
             if ($executedRow !== null) {
                 $executedAt = $executedRow['ejecutada_en'];
-                if ($executedRow['checksum'] !== $checksum) {
+                if (!self::checksumMatches($executedRow['checksum'], $sums['accepted'])) {
                     $fileStatus = 'checksum_mismatch';
                 } elseif ($stateRow !== null
-                    && ($stateRow['checksum'] !== $checksum || $stateRow['estado'] !== 'completed')) {
+                    && (!self::checksumMatches($stateRow['checksum'], $sums['accepted']) || $stateRow['estado'] !== 'completed')) {
                     $fileStatus = 'recovery_required';
                 } else {
                     $fileStatus = 'executed';
                 }
             } elseif ($stateRow !== null) {
-                if ($stateRow['checksum'] !== $checksum || $stateRow['estado'] === 'completed') {
+                if (!self::checksumMatches($stateRow['checksum'], $sums['accepted']) || $stateRow['estado'] === 'completed') {
                     $fileStatus = 'recovery_required';
                 } elseif ($stateRow['estado'] === 'in_progress') {
                     $fileStatus = 'interrupted';
@@ -209,10 +210,11 @@ final class MigrationRunner
                     if (in_array($row['status'], ['interrupted', 'failed', 'recovery_required'], true)) {
                         throw new MigrationException(
                             sprintf(
-                                'La migración %s (%s) requiere recuperación manual; estado=%s. No se reintentó para evitar duplicar cambios. Inspecciona el esquema/datos y reconcilia el journal antes de continuar.',
+                                'La migración %s (%s) requiere recuperación manual; estado=%s. No se reintentó para evitar duplicar cambios. Inspecciona el esquema/datos. Si el archivo la declara retry_safe, puedes liberarla con: php migrate.php recover --migration=%s --target-db=<base> --env-id=<id> --confirm-write=YES',
                                 $row['id'],
                                 $row['file'],
-                                $row['status']
+                                $row['status'],
+                                $row['id']
                             )
                         );
                     }
@@ -247,7 +249,65 @@ final class MigrationRunner
 
                 return $executedNow;
             },
-            15
+            self::LOCK_TIMEOUT_SECONDS
+        );
+    }
+
+    /**
+     * Libera el journal de una migración fallida o interrumpida para poder repetirla desde el inicio.
+     * Solo se permite si el archivo declara retry_safe (todas sus sentencias son idempotentes) y la migración
+     * no está registrada como ejecutada. No ejecuta SQL de la migración: después hay que correr "up".
+     *
+     * @return array{id:string,estado_anterior:string,detalle:string|null}
+     */
+    public function recover(string $migrationId): array
+    {
+        $migrations = $this->discoverAndValidate();
+        $dbName = $this->repository->currentDatabaseName();
+
+        return DatabaseLock::run(
+            $this->db,
+            self::lockNameForDatabase($dbName),
+            function () use ($migrations, $migrationId): array {
+                if (!$this->repository->tableExists() || !$this->repository->stateTableExists()) {
+                    throw new MigrationException('El sistema de migraciones no está inicializado; no hay nada que recuperar.');
+                }
+
+                $target = null;
+                foreach ($migrations as $migration) {
+                    if ($migration['id'] === $migrationId) {
+                        $target = $migration;
+                        break;
+                    }
+                }
+                if ($target === null) {
+                    throw new MigrationException(sprintf('La migración %s no existe en el directorio de migraciones.', $migrationId));
+                }
+                if (isset($this->repository->allIndexedById()[$migrationId])) {
+                    throw new MigrationException(sprintf('La migración %s ya está registrada como ejecutada; no hay nada que recuperar.', $migrationId));
+                }
+                $state = $this->repository->allStatesIndexedById()[$migrationId] ?? null;
+                if ($state === null) {
+                    throw new MigrationException(sprintf('La migración %s no tiene un estado de recuperación pendiente.', $migrationId));
+                }
+                if (!$target['retry_safe']) {
+                    throw new MigrationException(
+                        sprintf(
+                            'La migración %s no está marcada como retry_safe: no se puede repetir automáticamente. Inspecciona el esquema y los datos y repara el journal manualmente.',
+                            $migrationId
+                        )
+                    );
+                }
+
+                $this->repository->deleteState($migrationId);
+
+                return [
+                    'id' => $migrationId,
+                    'estado_anterior' => $state['estado'],
+                    'detalle' => $state['detalle'],
+                ];
+            },
+            self::LOCK_TIMEOUT_SECONDS
         );
     }
 
@@ -354,17 +414,17 @@ final class MigrationRunner
                 $executedAt = $executedRow['ejecutada_en'];
                 if ($executedRow['archivo'] !== $migration['file']) {
                     $fileStatus = 'identity_mismatch';
-                } elseif ($executedRow['checksum'] !== $migration['checksum']) {
+                } elseif (!self::checksumMatches($executedRow['checksum'], $migration['accepted_checksums'])) {
                     $fileStatus = 'checksum_mismatch';
                 } elseif ($stateRow !== null
-                    && ($stateRow['checksum'] !== $migration['checksum']
+                    && (!self::checksumMatches($stateRow['checksum'], $migration['accepted_checksums'])
                         || $stateRow['estado'] !== 'completed')) {
                     $fileStatus = 'recovery_required';
                 } else {
                     $fileStatus = 'executed';
                 }
             } elseif ($stateRow !== null) {
-                if ($stateRow['checksum'] !== $migration['checksum']) {
+                if (!self::checksumMatches($stateRow['checksum'], $migration['accepted_checksums'])) {
                     $fileStatus = 'recovery_required';
                 } elseif ($stateRow['estado'] === 'in_progress') {
                     $fileStatus = 'interrupted';
@@ -446,9 +506,13 @@ final class MigrationRunner
         $transactional = $definition['transactional'] ?? false;
         $statements = $definition['statements'] ?? null;
         $preflight = $definition['preflight'] ?? [];
+        $retrySafe = $definition['retry_safe'] ?? false;
 
         if (!is_string($id) || preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,190}$/D', trim($id)) !== 1) {
             throw new MigrationException(sprintf('La migración %s no tiene un id válido (máximo 191 caracteres ASCII).', $realPath));
+        }
+        if (!is_bool($retrySafe)) {
+            throw new MigrationException(sprintf('La migración %s debe declarar retry_safe como booleano.', $realPath));
         }
         if (!is_string($description) || trim($description) === '') {
             throw new MigrationException(sprintf('La migración %s no tiene una descripción válida.', $realPath));
@@ -488,21 +552,66 @@ final class MigrationRunner
             ];
         }
 
-        $checksum = hash_file('sha256', $realPath);
-        if (!is_string($checksum) || $checksum === '') {
-            throw new MigrationException(sprintf('No se pudo calcular checksum de %s.', $realPath));
-        }
+        $sums = self::checksumsFor($realPath);
 
         return [
             'id' => trim($id),
             'file' => basename($realPath),
             'path' => $realPath,
             'description' => trim($description),
-            'checksum' => $checksum,
+            'checksum' => $sums['canonical'],
+            'accepted_checksums' => $sums['accepted'],
             'transactional' => $transactional,
+            'retry_safe' => $retrySafe,
             'statements' => $normalized,
             'preflight' => $normalizedPreflight,
         ];
+    }
+
+    /**
+     * El checksum canónico no depende de los finales de línea (Git puede convertirlos según el sistema).
+     * Los registros anteriores, calculados sobre los bytes originales, siguen siendo válidos.
+     *
+     * @return array{canonical:string,accepted:list<string>}
+     */
+    private static function checksumsFor(string $path): array
+    {
+        $content = file_get_contents($path);
+        if (!is_string($content)) {
+            throw new MigrationException(sprintf('No se pudo leer %s para calcular su checksum.', $path));
+        }
+        $lf = str_replace("\r\n", "\n", $content);
+        $canonical = hash('sha256', $lf);
+
+        // Se leen con una expresión regular (sin ejecutar el archivo) para que status/history sigan siendo de solo lectura.
+        $superseded = [];
+        if (preg_match("/'supersedes_checksums'\s*=>\s*\[(.*?)\]/s", $lf, $block) === 1) {
+            preg_match_all('/[a-f0-9]{64}/', $block[1], $hashes);
+            $superseded = $hashes[0];
+        }
+
+        return [
+            'canonical' => $canonical,
+            'accepted' => array_values(array_unique(array_merge([
+                $canonical,
+                hash('sha256', $content),
+                hash('sha256', str_replace("\n", "\r\n", $lf)),
+            ], $superseded))),
+        ];
+    }
+
+    /**
+     * @param list<string> $accepted
+     */
+    private static function checksumMatches(string $recorded, array $accepted): bool
+    {
+        foreach ($accepted as $candidate) {
+            if (hash_equals($recorded, $candidate)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -527,6 +636,21 @@ final class MigrationRunner
     }
 
     /**
+     * Ejecuta una sentencia y cierra cualquier conjunto de resultados que devuelva (por ejemplo un `SELECT 1`
+     * dentro de un EXECUTE condicional); si no, PDO bloquea la siguiente sentencia con el error 2014.
+     */
+    private function executeStatement(string $statement): void
+    {
+        $result = $this->db->query($statement);
+        if ($result !== false) {
+            if ($result->columnCount() > 0) {
+                $result->fetchAll();
+            }
+            $result->closeCursor();
+        }
+    }
+
+    /**
      * @param array{id:string,file:string,path:string,description:string,checksum:string,transactional:bool,statements:list<string>} $migration
      */
     private function executeTransactionalMigration(array $migration): void
@@ -535,7 +659,7 @@ final class MigrationRunner
         $this->db->beginTransaction();
         try {
             foreach ($migration['statements'] as $statement) {
-                $this->db->exec($statement);
+                $this->executeStatement($statement);
             }
             $this->repository->save(
                 $migration['id'],
@@ -573,7 +697,7 @@ final class MigrationRunner
 
         try {
             foreach ($migration['statements'] as $statement) {
-                $this->db->exec($statement);
+                $this->executeStatement($statement);
             }
 
             $this->db->beginTransaction();
@@ -647,8 +771,8 @@ final class MigrationRunner
      */
     private function assertChecksumUnchanged(array $migration): void
     {
-        $currentChecksum = hash_file('sha256', $migration['path']);
-        if (!is_string($currentChecksum) || !hash_equals($migration['checksum'], $currentChecksum)) {
+        $currentChecksum = self::checksumsFor($migration['path'])['canonical'];
+        if (!hash_equals($migration['checksum'], $currentChecksum)) {
             throw new MigrationException(
                 sprintf('El archivo de migración %s cambió después de ser validado; no se ejecutó.', $migration['file'])
             );

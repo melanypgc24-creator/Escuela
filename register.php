@@ -5,7 +5,17 @@ require __DIR__ . '/bootstrap.php';
 
 $error = null;
 $success = false;
+
+if (!empty($_SESSION['id_usuario'])) {
+    header('Location: dashboard.php');
+    exit;
+}
+
+header('Cache-Control: no-store');
 $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
+$destinations = [
+    'alumno' => 'panel_alumno.php',
+];
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $csrfToken = $_POST['csrf_token'] ?? '';
@@ -14,12 +24,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!is_string($csrfToken) || !is_string($expectedToken) || !hash_equals($expectedToken, $csrfToken)) {
         http_response_code(403);
         $error = 'La sesión del formulario venció. Recarga la página e inténtalo de nuevo.';
+    } elseif (isset($_POST['rol']) || isset($_POST['role']) || isset($_POST['id_alumno']) || isset($_POST['id_profesor'])) {
+        // El registro público solo crea alumnos; el rol nunca se toma de la solicitud.
+        http_response_code(403);
+        $error = 'El registro público solo está disponible para alumnos.';
     } else {
+        $firstName = $_POST['nombre'] ?? '';
+        $lastName = $_POST['apellidos'] ?? '';
+        $phone = $_POST['telefono'] ?? '';
+        $birthDate = $_POST['fecha_nacimiento'] ?? '';
         $email = $_POST['correo'] ?? '';
         $password = $_POST['password'] ?? '';
         $passwordConfirmation = $_POST['password_confirmation'] ?? '';
 
-        if (!is_string($email) || !filter_var(trim($email), FILTER_VALIDATE_EMAIL)
+        if (!is_string($firstName) || trim($firstName) === '' || mb_strlen(trim($firstName), 'UTF-8') > 100
+            || !is_string($lastName) || trim($lastName) === '' || mb_strlen(trim($lastName), 'UTF-8') > 100) {
+            $error = 'Escribe tu nombre y apellidos (máximo 100 caracteres cada uno).';
+        } elseif (!is_string($phone) || trim($phone) === '' || mb_strlen(trim($phone), 'UTF-8') > 20) {
+            $error = 'Escribe un teléfono válido de máximo 20 caracteres.';
+        } elseif (!is_string($birthDate) || !\App\Core\Request::isValidDate($birthDate)) {
+            $error = 'Selecciona una fecha de nacimiento válida.';
+        } elseif (!is_string($email) || !filter_var(trim($email), FILTER_VALIDATE_EMAIL)
             || strlen(trim($email)) > 100) {
             $error = 'Escribe un correo válido de máximo 100 caracteres.';
         } elseif (!is_string($password) || mb_strlen($password, 'UTF-8') < 8
@@ -29,15 +54,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } elseif (!is_string($passwordConfirmation) || !hash_equals($password, $passwordConfirmation)) {
             $error = 'La contraseña y su confirmación no coinciden.';
         } else {
+            $registeredUserId = null;
             try {
                 $pdo = require __DIR__ . '/conexion.php';
                 $email = trim($email);
+                $firstName = trim($firstName);
+                $lastName = trim($lastName);
+                $phone = trim($phone);
                 \App\Core\DatabaseLock::run(
                     $pdo,
                     \App\Core\LegacyIdAllocator::lockNameForTable('usuarios'),
-                    static function () use ($pdo, $email, $password, &$error, &$success): void {
+                    static function () use ($pdo, $email, $password, $firstName, $lastName, $phone, $birthDate, &$error, &$success, &$registeredUserId): void {
                         $pdo->beginTransaction();
                         try {
+                            $hasColumn = static function (\PDO $connection, string $table, string $column): bool {
+                                $statement = $connection->prepare(
+                                    "SELECT COUNT(*)
+                                     FROM information_schema.columns
+                                     WHERE table_schema = DATABASE()
+                                       AND table_name = :table_name
+                                       AND column_name = :column_name"
+                                );
+                                $statement->execute([
+                                    'table_name' => $table,
+                                    'column_name' => $column,
+                                ]);
+                                return ((int) $statement->fetchColumn()) > 0;
+                            };
                             $existingUser = $pdo->prepare(
                                 'SELECT id_usuario FROM usuarios WHERE correo = :correo LIMIT 1 FOR UPDATE'
                             );
@@ -49,17 +92,83 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                 return;
                             }
 
+                            $alumnoHasMatricula = $hasColumn($pdo, 'alumnos', 'matricula');
+                            $alumnoColumns = ['nombre', 'apellidos', 'telefono', 'fecha_nacimiento', 'fecha_ingreso', 'estatus', 'id_cinturon'];
+                            $alumnoParams = [
+                                'nombre' => $firstName,
+                                'apellidos' => $lastName,
+                                'telefono' => $phone,
+                                'fecha_nacimiento' => $birthDate,
+                                'fecha_ingreso' => date('Y-m-d'),
+                                'estatus' => 1,
+                                'id_cinturon' => null,
+                            ];
+                            if ($alumnoHasMatricula) {
+                                $alumnoColumns[] = 'matricula';
+                                $alumnoParams['matricula'] = 'TMP-' . bin2hex(random_bytes(8));
+                            }
+                            if ($hasColumn($pdo, 'alumnos', 'correo_contacto')) {
+                                $alumnoColumns[] = 'correo_contacto';
+                                $alumnoParams['correo_contacto'] = $email;
+                            }
+                            if ($hasColumn($pdo, 'alumnos', 'direccion')) {
+                                $alumnoColumns[] = 'direccion';
+                                $alumnoParams['direccion'] = null;
+                            }
+                            if ($hasColumn($pdo, 'alumnos', 'categoria')) {
+                                $alumnoColumns[] = 'categoria';
+                                $alumnoParams['categoria'] = null;
+                            }
+                            if ($hasColumn($pdo, 'alumnos', 'contacto_emergencia_nombre')) {
+                                $alumnoColumns[] = 'contacto_emergencia_nombre';
+                                $alumnoParams['contacto_emergencia_nombre'] = null;
+                            }
+                            if ($hasColumn($pdo, 'alumnos', 'contacto_emergencia_telefono')) {
+                                $alumnoColumns[] = 'contacto_emergencia_telefono';
+                                $alumnoParams['contacto_emergencia_telefono'] = null;
+                            }
+
+                            $alumnoUsesAutoIncrement = \App\Core\TableSchemaInspector::usesAutoIncrement($pdo, 'alumnos', 'id_alumno');
+                            if (!$alumnoUsesAutoIncrement) {
+                                $nextStudentId = (int) $pdo->query(
+                                    'SELECT COALESCE(MAX(id_alumno), 0) + 1 FROM alumnos'
+                                )->fetchColumn();
+                                array_unshift($alumnoColumns, 'id_alumno');
+                                $alumnoParams['id_alumno'] = $nextStudentId;
+                            }
+                            $alumnoSql = sprintf(
+                                'INSERT INTO alumnos (%s) VALUES (%s)',
+                                implode(', ', array_map(static fn (string $column): string => '`' . $column . '`', $alumnoColumns)),
+                                implode(', ', array_map(static fn (string $column): string => ':' . $column, $alumnoColumns))
+                            );
+                            $createStudent = $pdo->prepare($alumnoSql);
+                            $createStudent->execute($alumnoParams);
+                            $studentId = $alumnoUsesAutoIncrement ? (int) $pdo->lastInsertId() : $nextStudentId;
+                            if ($studentId < 1) {
+                                throw new \RuntimeException('La base de datos no devolvió un identificador de alumno válido.');
+                            }
+                            if ($alumnoHasMatricula) {
+                                $updateMatricula = $pdo->prepare(
+                                    'UPDATE alumnos SET matricula = :matricula WHERE id_alumno = :id_alumno'
+                                );
+                                $updateMatricula->execute([
+                                    'matricula' => 'TC-' . str_pad((string) $studentId, 6, '0', STR_PAD_LEFT),
+                                    'id_alumno' => $studentId,
+                                ]);
+                            }
+
                             $usesAutoIncrement = \App\Core\TableSchemaInspector::usesAutoIncrement($pdo, 'usuarios', 'id_usuario');
                             if ($usesAutoIncrement) {
                                 $statement = $pdo->prepare(
                                     "INSERT INTO usuarios
                                         (correo, `password`, rol, id_alumno, id_profesor)
                                      VALUES
-                                        (:correo, :password, 'alumno', NULL, NULL)"
+                                        (:correo, :password, 'alumno', :id_alumno, NULL)"
                                 );
                                 $statement->execute([
                                     'correo' => $email,
                                     'password' => password_hash($password, PASSWORD_DEFAULT),
+                                    'id_alumno' => $studentId,
                                 ]);
                                 $userId = (int) $pdo->lastInsertId();
                                 if ($userId < 1) {
@@ -71,25 +180,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                                     "INSERT INTO usuarios
                                         (id_usuario, correo, `password`, rol, id_alumno, id_profesor)
                                      VALUES
-                                        (:id_usuario, :correo, :password, 'alumno', NULL, NULL)"
+                                        (:id_usuario, :correo, :password, 'alumno', :id_alumno, NULL)"
                                 );
                                 $statement->execute([
                                     'id_usuario' => $nextId,
                                     'correo' => $email,
                                     'password' => password_hash($password, PASSWORD_DEFAULT),
+                                    'id_alumno' => $studentId,
                                 ]);
                                 $userId = $nextId;
                             }
 
-                            (new \App\Models\AuditModel($pdo))->record(
-                                $userId,
-                                'registrar_cuenta',
-                                'usuarios',
-                                $userId,
-                                ['rol' => 'alumno']
-                            );
                             $pdo->commit();
+                            $registeredUserId = $userId;
                             session_regenerate_id(true);
+                            $_SESSION['id_usuario'] = $userId;
+                            $_SESSION['correo'] = $email;
+                            $_SESSION['rol'] = 'alumno';
+                            $_SESSION['id_alumno'] = $studentId;
+                            $_SESSION['id_profesor'] = null;
                             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                             $success = true;
                         } catch (\Throwable $exception) {
@@ -100,6 +209,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         }
                     }
                 );
+                if ($success && is_int($registeredUserId)) {
+                    try {
+                        (new \App\Models\AuditModel($pdo))->record(
+                            $registeredUserId,
+                            'registrar_cuenta',
+                            'usuarios',
+                            $registeredUserId,
+                            ['rol' => 'alumno', 'id_alumno' => $_SESSION['id_alumno'] ?? null]
+                        );
+                    } catch (\PDOException $auditException) {
+                        error_log('Registration audit skipped: ' . $auditException->getMessage());
+                    }
+                    header('Location: ' . $destinations['alumno']);
+                    exit;
+                }
             } catch (\PDOException $exception) {
                 if ($exception->getCode() === '23000') {
                     $error = 'No se pudo completar el registro. Comprueba que el correo no esté registrado.';
@@ -158,6 +282,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         <?php if (!$success): ?>
             <form method="post" action="register.php" data-auth-validation="register" novalidate>
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                <label for="nombre">Nombre</label>
+                <input id="nombre" name="nombre" type="text" autocomplete="given-name" required maxlength="100"
+                    value="<?= htmlspecialchars((string) ($_POST['nombre'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+
+                <label for="apellidos">Apellidos</label>
+                <input id="apellidos" name="apellidos" type="text" autocomplete="family-name" required maxlength="100"
+                    value="<?= htmlspecialchars((string) ($_POST['apellidos'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+
+                <label for="telefono">Teléfono</label>
+                <input id="telefono" name="telefono" type="tel" autocomplete="tel" required maxlength="20"
+                    value="<?= htmlspecialchars((string) ($_POST['telefono'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+
+                <label for="fecha_nacimiento">Fecha de nacimiento</label>
+                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required
+                    value="<?= htmlspecialchars((string) ($_POST['fecha_nacimiento'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+
                 <label for="correo">Correo electrónico</label>
                 <input id="correo" name="correo" type="text" inputmode="email" autocomplete="email"
                     autocapitalize="none" spellcheck="false" required maxlength="100"

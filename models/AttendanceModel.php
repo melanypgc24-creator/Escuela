@@ -65,6 +65,38 @@ final class AttendanceModel
     {
         $this->db->beginTransaction();
         try {
+            $billingTablesPresent = (int) $this->db->query(
+                "SELECT COUNT(*)
+                 FROM information_schema.tables
+                 WHERE table_schema = DATABASE()
+                   AND table_name IN ('cargos_mensuales', 'aplicaciones_pagos', 'pagos')"
+            )->fetchColumn() === 3;
+            if ($billingTablesPresent) {
+                $pendingDebtCheck = $this->db->prepare(
+                    'SELECT COUNT(*)
+                     FROM (
+                        SELECT cm.id_cargo,
+                               cm.importe - COALESCE((
+                                   SELECT SUM(ap.importe_aplicado)
+                                   FROM aplicaciones_pagos ap
+                                   JOIN pagos p ON p.id_pago = ap.id_pago AND p.estado = "activo"
+                                   WHERE ap.id_cargo = cm.id_cargo
+                                     AND ap.id_alumno = cm.id_alumno
+                               ), 0) AS saldo_pendiente
+                        FROM cargos_mensuales cm
+                        WHERE cm.id_alumno = :id_alumno
+                          AND cm.estado IN ("pendiente", "vencido")
+                     ) pendientes
+                     WHERE pendientes.saldo_pendiente > 0'
+                );
+                $pendingDebtCheck->execute(['id_alumno' => $studentId]);
+                if ((int) $pendingDebtCheck->fetchColumn() > 0) {
+                    throw new \DomainException(
+                        'No se puede registrar asistencia porque el alumno tiene adeudos pendientes o vencidos.'
+                    );
+                }
+            }
+
             if ($professorId !== null) {
                 $enrollment = $this->db->prepare(
                     'SELECT ca.id_inscripcion

@@ -7,6 +7,9 @@ return [
     // true solo para sentencias DML sin commit implícito.
     // En MariaDB, ALTER/CREATE/DROP/TRUNCATE generan commit implícito.
     'transactional' => false,
+    // true solo si TODAS las sentencias son idempotentes (CREATE ... IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, ...).
+    // Solo entonces "php migrate.php recover" permite repetirla tras un fallo o interrupción.
+    'retry_safe' => false,
     'statements' => [
         '/* agrega aquí sentencias SQL */',
     ],

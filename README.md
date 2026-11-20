@@ -13,6 +13,7 @@ models/        Consultas a la base de datos
 routes/        Rutas de la API
 views/         Vistas HTML del login y panel
 css/           Estilos del sitio
+js/            Scripts del navegador (validación de formularios y menú lateral de los paneles)
 imagenes/      Imágenes del sitio
 includes/      Componentes compartidos de la página
 conexion.php   Conexión PDO reutilizable
@@ -24,7 +25,7 @@ login.php      Inicio de sesión web
 dashboard_admin.php Panel protegido para administrar usuarios y roles
 registrar_pago.php Registro de pagos para administradores
 panel_maestro.php Panel básico de maestro
-panel_alumno.php Panel básico de alumno
+panel_alumno.php Panel del alumno (inicio, clases, historial, notificaciones y perfil)
 dashboard.php  Panel protegido
 logout.php     Cierre de sesión
 bootstrap.php  Carga de clases y configuración inicial
@@ -36,8 +37,14 @@ index.php      Página principal del sitio
 1. Inicia Apache y MySQL. La base seleccionada debe contener `usuarios` con `id_usuario`, `correo`, `password`, `rol`, `id_alumno` e `id_profesor`, además de las tablas relacionadas.
 2. Usa PHP 8 o posterior y habilita `pdo_mysql`.
 3. Configura las variables de entorno `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASSWORD`. Sin variables, la conexión local usa `127.0.0.1`, `3306`, `escuela`, `root` y contraseña vacía; cambia `DB_NAME` si tu base tiene otro nombre.
-4. El registro está en `http://localhost/Escuela/register.php` y solicita solo correo, contraseña y confirmación de contraseña. Crea una cuenta con rol fijo `alumno` y `id_alumno`/`id_profesor` en `NULL`; los datos personales del alumno se podrán vincular después desde el panel. El login en `http://localhost/Escuela/login.php` valida contraseñas con `password_verify()` y redirige según el rol.
-5. El panel `dashboard_admin.php` solo permite el acceso al rol `administrador`. Desde ahí se listan los usuarios y se asignan roles; no se puede quitar el rol al último administrador. El módulo `registrar_pago.php` también está restringido al administrador y solo permite pagos para alumnos activos.
+4. El registro está en `http://localhost/Escuela/register.php` y solicita nombre, apellidos, teléfono, fecha de nacimiento, correo, contraseña y confirmación. Acepta cualquier correo con formato válido (no solo institucional). Al crear la cuenta pública, registra automáticamente la ficha del alumno y la vincula al usuario con rol `alumno`. Al registrar correctamente, la sesión se inicia automáticamente y redirige directo al panel de alumno. El login en `http://localhost/Escuela/login.php` valida contraseñas con `password_verify()` y redirige según el rol.
+5. Las vistas de rol están separadas por permisos:
+   - `dashboard_admin.php`: gestión de usuarios/roles y eliminación de cuentas.
+   - `dashboard_director.php`: indicadores y reportes financieros por periodo.
+   - `panel_recepcionista.php`: operación de caja (pagos) y seguimiento operativo.
+   - `panel_maestro.php`: clases asignadas, alumnos y asistencia reciente.
+   - `panel_alumno.php`: perfil, historial de pagos, adeudos, asistencia y notificaciones.
+6. El panel `dashboard_admin.php` solo permite el acceso al rol `administrador`. Desde ahí se listan las cuentas por rol (alumnos, instructores, secretaría, directores y administradores), se crean cuentas de personal, se editan sus datos, se cambia el rol, se activa o desactiva una cuenta, se **restablece la contraseña** de un usuario que la olvidó y se pueden eliminar cuentas. No se puede eliminar ni quitar el rol a tu propia cuenta ni al último administrador activo. Eliminar una cuenta borra solo el acceso: la ficha de alumno o instructor y su historial se conservan. Al eliminar una cuenta **los ID de `usuarios` no se modifican**: los identificadores son estables y pueden quedar huecos en la numeración; ninguna pantalla renumera ni reinicia `AUTO_INCREMENT`. Las sesiones abiertas se validan también por correo. El módulo `registrar_pago.php` también está restringido al administrador y solo permite pagos para alumnos activos.
    Para generar un hash ejecuta `php -r "echo password_hash('TU_CONTRASENA_SEGURA', PASSWORD_DEFAULT), PHP_EOL;"` y usa el resultado en esta inserción, sustituyendo el correo y el hash:
 
    ```sql
@@ -46,7 +53,8 @@ index.php      Página principal del sitio
    ```
    Si `id_usuario` no tiene `AUTO_INCREMENT`, incluye explícitamente un valor libre para `id_usuario`.
    Verifica también que `correo` tenga un índice `UNIQUE` y que `password` pueda guardar el hash completo (se recomienda `VARCHAR(255)`).
-6. La página principal está en `http://localhost/Escuela/`. La API está disponible en `http://localhost/Escuela/api.php?route=/login`; sus endpoints requieren una base de datos compatible.
+7. La página principal está en `http://localhost/Escuela/`. La API está disponible en `http://localhost/Escuela/api.php?route=/login`; sus endpoints requieren una base de datos compatible.
+8. El registro de asistencia valida adeudos activos del alumno cuando existen tablas de cobranza (`cargos_mensuales`, `aplicaciones_pagos`, `pagos`). Si hay saldo pendiente o vencido, bloquea la asistencia.
 
 ## API
 
@@ -95,15 +103,17 @@ php migrate.php history
 ```
 
 - Los archivos de migración van en `database/migrations/*.php`.
-- El historial se registra en la tabla `migraciones`.
+- El historial se registra en la tabla `migraciones` y un journal de recuperación en `migraciones_estado`.
 - Cada migración se ejecuta una sola vez por `id`.
-- Si una migración ya ejecutada cambia su checksum, el runner se detiene para evitar drift.
+- Si una migración ya ejecutada cambia su contenido, el runner se detiene para evitar drift. Los finales de línea (LF/CRLF) no cuentan como cambio.
 - `status` y `history` son de solo lectura; si no existe la tabla `migraciones`, informan que el sistema no está inicializado.
 - La creación de la tabla de control solo se permite con `init`.
-- Para `init`/`up` debes autorizar explícitamente la base con variables de entorno:
+- Para `init`/`up`/`recover` debes autorizar explícitamente la base con variables de entorno:
   - `MIGRATIONS_ALLOWED_DATABASES` (lista de bases autorizadas),
-  - `MIGRATIONS_BLOCKED_DATABASES` (por defecto bloquea `escuela`),
-  - `MIGRATIONS_ENV_ID` (token de entorno que debe coincidir con `--env-id`).
+  - `MIGRATIONS_BLOCKED_DATABASES` (lista de bases bloqueadas; `escuela` siempre está protegida),
+  - `MIGRATIONS_ENV_ID` (token de entorno que debe coincidir con `--env-id`),
+  - `MIGRATIONS_UNLOCK_PROTECTED_DATABASES` (opcional): libera una base protegida como `escuela`, y exige además `--backup-confirmed=YES`.
+- Los identificadores (`id_usuario`, `id_alumno`, `id_profesor`, ...) nunca se renumeran: ninguna migración ni pantalla los modifica.
 
 Formato de archivo de migración:
 
@@ -112,6 +122,8 @@ return [
   'id' => 'AAAAMMDD_HHMMSS_descripcion',
   'description' => 'Descripción',
   'transactional' => false,
+  // true solo si TODAS las sentencias son idempotentes (CREATE ... IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, ...).
+  'retry_safe' => false,
   'statements' => [
     'ALTER TABLE ...',
   ],
@@ -125,4 +137,67 @@ Por eso:
 
 - No todas las migraciones pueden revertirse con `ROLLBACK`.
 - Para DDL, el runner ejecuta en modo no transaccional y se detiene ante errores.
+- Si una migración falla o se interrumpe, queda en estado `failed`/`interrupted` y `up` **no la repite automáticamente**.
+- Solo las migraciones marcadas `retry_safe` (hoy 003 y 005) pueden liberarse con `php migrate.php recover --migration=<id> ...` y repetirse con `up`. Las demás requieren restaurar el respaldo.
 - Usa respaldos y entornos aislados antes de ejecutar migraciones en ambientes compartidos.
+
+### Claves foráneas y columnas generadas (MariaDB 10.11)
+
+MariaDB rechaza (error 1901) `ON UPDATE CASCADE` sobre una columna que es base de una columna generada persistente. Por eso `pagos.id_sesion_privada` y `clases_alumnos.id_alumno` usan `ON UPDATE RESTRICT` (y `ON DELETE RESTRICT`): no se permiten registros huérfanos ni cambiar un identificador referenciado. Las FK hacia `usuarios` siguen con `ON UPDATE CASCADE`.
+
+### Actualizar una instalación existente sin perder datos
+
+Esta guía es para quien ya tiene una base con alumnos, profesores, pagos y su cuenta de administrador. **No importes `escuela.sql` ni crees otro administrador**: las migraciones solo agregan estructura y conservan tus registros. Requiere MariaDB (no MySQL), PHP 8 y los comandos desde la carpeta del proyecto. Ejemplo para XAMPP en Windows (PowerShell), con la base llamada `escuela`:
+
+1. **Respaldo obligatorio** (comprueba que el archivo no esté vacío):
+
+   ```powershell
+   C:\xampp\mysql\bin\mysqldump.exe -u root --single-transaction --routines escuela > respaldo_escuela_AAAAMMDD.sql
+   ```
+
+2. **Actualiza el código** (`git pull`). Si tienes cambios locales, guárdalos antes con `git stash` o un commit.
+3. **Define las variables de entorno** de esa sesión de PowerShell (ajusta usuario y contraseña; `DB_NAME` debe ser tu base):
+
+   ```powershell
+   $env:DB_NAME='escuela'; $env:DB_USER='root'; $env:DB_PASSWORD=''
+   $env:MIGRATIONS_ALLOWED_DATABASES='escuela'
+   $env:MIGRATIONS_UNLOCK_PROTECTED_DATABASES='escuela'   # solo si tu base se llama "escuela"
+   $env:MIGRATIONS_ENV_ID='actualizacion-2026-11'
+   ```
+
+4. **Revisa el estado** (solo lectura). En una base sin migrar verás `Sistema de migraciones no inicializado` y las 6 migraciones `pending`:
+
+   ```powershell
+   php migrate.php status
+   ```
+
+5. **Inicializa y migra**:
+
+   ```powershell
+   php migrate.php init --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
+   php migrate.php up   --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
+   ```
+
+6. **Verifica**: `php migrate.php status` debe mostrar las 6 migraciones como `executed`. Puedes ejecutar `up` otra vez: responde `No hay migraciones pendientes`. Inicia sesión con tu cuenta de administrador de siempre; tus IDs (incluido el ID 0 si lo tienes) no cambian.
+
+**Si algo falla:**
+
+- No repitas `up` a ciegas. Lee el mensaje y ejecuta `php migrate.php status`.
+- Estado `failed`, `interrupted` o `recovery_required` en la **003** o la **005** (marcadas `retry_safe`): libera y repite.
+
+  ```powershell
+  php migrate.php recover --migration=20261118_003_clases_privadas_notificaciones --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
+  php migrate.php up --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
+  ```
+
+- Un fallo en 001, 002 o 004: no uses `recover`. Restaura el respaldo y avisa al equipo con el mensaje completo.
+- `checksum_mismatch`: alguien modificó una migración ya ejecutada. Revierte el archivo con `git checkout -- database/migrations`.
+- Si ya habías ejecutado la versión anterior de las migraciones 003 o 005 con éxito (por ejemplo en MariaDB 10.4), no hay que hacer nada: se reconocen como ya ejecutadas.
+
+## Cuentas, roles y panel del alumno
+
+- **Registro público (`register.php`)**: solo crea cuentas de **alumno** (con su ficha en `alumnos`). El rol nunca se toma de la solicitud y se rechaza cualquier intento de enviarlo.
+- **Cuentas de maestro, recepción, dirección y administración**: las crea un administrador desde `dashboard_admin.php` ("Crear cuenta de personal"). El maestro se vincula con `profesor` (`usuarios.id_profesor`); el resto no necesita ficha de alumno ni cinturón.
+- **Administración de cuentas**: el administrador consulta, edita, cambia el rol y activa/desactiva cuentas. Las cuentas no se eliminan; cambiar de rol conserva el ID, los vínculos y el historial. Una cuenta desactivada no puede iniciar sesión (web ni API) y su sesión abierta deja de ser válida.
+- **Migración `20261120_006_cuentas_y_perfiles`**: agrega `usuarios.activo` y datos personales opcionales (`nombre`, `apellidos`, `telefono`, `fecha_nacimiento`) para el personal sin ficha. Es incremental y repetible. Hasta aplicarla, el panel funciona pero "Activar/Desactivar" queda deshabilitado. Los roles `director` y `recepcionista` requieren la migración 001.
+- **Panel del alumno (`panel_alumno.php?seccion=...`)**: Inicio, Mi perfil, Mis clases, Asistencias, Pagos, Adeudos y Notificaciones. Si una instalación aún no tiene alguna tabla, la sección se muestra vacía con un mensaje amable; los errores reales se registran en el log de PHP/Apache.

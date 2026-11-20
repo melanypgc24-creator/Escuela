@@ -41,21 +41,13 @@ function require_valid_csrf(): void
     }
 }
 
-function csrf_token(): string
-{
-    if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['csrf_token'];
-}
-
 function current_authenticated_role(): string
 {
     require_login();
     try {
         $pdo = require dirname(__DIR__) . '/config/conexion.php';
         $statement = $pdo->prepare(
-            'SELECT rol, id_alumno, id_profesor
+            'SELECT correo, rol, id_alumno, id_profesor
              FROM usuarios WHERE id_usuario = :id_usuario'
         );
         $statement->execute(['id_usuario' => $_SESSION['id_usuario']]);
@@ -66,7 +58,11 @@ function current_authenticated_role(): string
         exit('No se pudo validar el acceso. Inténtalo más tarde.');
     }
 
-    if (!is_array($user) || !is_string($user['rol'] ?? null)) {
+    // Los ID de usuario son estables: se valida también el correo para que una sesión no siga apuntando a otra cuenta.
+    if (!is_array($user) || !is_string($user['rol'] ?? null)
+        || !is_string($_SESSION['correo'] ?? null)
+        || strcasecmp((string) $user['correo'], $_SESSION['correo']) !== 0
+        || !\App\Core\AccountStatus::isActive($pdo, (int) $_SESSION['id_usuario'])) {
         $_SESSION = [];
         header('Location: login.php');
         exit;

@@ -30,7 +30,8 @@ final class AuthMiddleware
             exit;
         }
 
-        if (!is_array($user) || !is_string($user['rol'] ?? null)) {
+        if (!is_array($user) || !is_string($user['rol'] ?? null)
+            || !\App\Core\AccountStatus::isActive(Database::connect(), (int) $_SESSION['id_usuario'])) {
             $_SESSION = [];
             JsonResponse::send(['error' => 'Autenticación requerida.'], 401);
             exit;

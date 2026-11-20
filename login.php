@@ -78,6 +78,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         error_log('Login rejected: user has an invalid role.');
                         http_response_code(403);
                         $error = 'Tu cuenta tiene un rol no válido. Contacta al administrador.';
+                    } elseif (!\App\Core\AccountStatus::isActive($pdo, (int) $user['id_usuario'])) {
+                        http_response_code(403);
+                        $error = 'Tu cuenta está desactivada. Contacta al administrador.';
                     } else {
                         if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
                             $rehash = $pdo->prepare(
@@ -154,7 +157,7 @@ $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOT
             <form method="post" action="login.php" data-auth-validation="login" novalidate>
                 <input type="hidden" name="csrf_token" value="<?= $escape((string) $_SESSION['csrf_token']) ?>">
 
-                <label for="correo">Correo institucional</label>
+                <label for="correo">Correo electrónico</label>
                 <input
                     id="correo"
                     name="correo"
@@ -166,7 +169,7 @@ $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOT
                     maxlength="100"
                     required
                     autofocus
-                    placeholder="tu-correo@itmatamoros.edu.mx"
+                    placeholder="tu-correo@dominio.com"
                     value="<?= $escape($email) ?>"
                     aria-describedby="correo-validation"
                 >

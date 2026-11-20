@@ -172,6 +172,29 @@ final class MigrationRepository
         }
     }
 
+    public function deleteState(string $id): void
+    {
+        if ($this->db->inTransaction()) {
+            throw new MigrationException('El estado de recuperación debe liberarse fuera de una transacción abierta.');
+        }
+        $this->db->beginTransaction();
+        try {
+            $statement = $this->db->prepare(
+                sprintf('DELETE FROM `%s` WHERE id_migracion = :id_migracion', $this->stateTable)
+            );
+            $statement->execute(['id_migracion' => $id]);
+            if ($statement->rowCount() !== 1) {
+                throw new MigrationException(sprintf('No se pudo liberar el estado de recuperación de %s.', $id));
+            }
+            $this->db->commit();
+        } catch (\Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
     public function markNonTransactionalFailed(string $id, string $detail): void
     {
         if ($this->db->inTransaction()) {

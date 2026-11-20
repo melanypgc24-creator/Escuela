@@ -32,6 +32,10 @@ final class AuthController
             JsonResponse::send(['error' => 'Credenciales incorrectas.'], 401);
             return;
         }
+        if (!\App\Core\AccountStatus::isActive(\App\Config\Database::connect(), (int) $user['id_usuario'])) {
+            JsonResponse::send(['error' => 'La cuenta está desactivada.'], 403);
+            return;
+        }
 
         session_regenerate_id(true);
         $_SESSION['id_usuario'] = (int) $user['id_usuario'];

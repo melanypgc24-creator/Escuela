@@ -11,7 +11,7 @@ header('Cache-Control: no-store');
 $error = null;
 $success = $_SESSION['flash_pago'] ?? null;
 unset($_SESSION['flash_pago']);
-$csrfToken = $_SESSION['csrf_token'] ?? '';
+$csrfToken = csrf_token();
 $paymentMethods = ($_SESSION['rol'] ?? null) === 'recepcionista'
     ? ['Efectivo', 'Tarjeta']
     : ['Efectivo', 'Transferencia', 'Tarjeta'];

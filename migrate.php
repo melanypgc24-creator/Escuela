@@ -44,7 +44,7 @@ function parseCliOptions(array $argv): array
         if (array_key_exists($parts[0], $options)) {
             throw new MigrationException(sprintf('Parámetro duplicado: --%s.', $parts[0]));
         }
-        if (!in_array($parts[0], ['target-db', 'env-id', 'confirm-write'], true)) {
+        if (!in_array($parts[0], ['target-db', 'env-id', 'confirm-write', 'migration', 'backup-confirmed'], true)) {
             throw new MigrationException(sprintf('Parámetro desconocido: --%s.', $parts[0]));
         }
         $options[$parts[0]] = $parts[1];
@@ -108,9 +108,35 @@ function assertWriteAuthorization(MigrationRepository $repository, array $option
             throw new MigrationException('MIGRATIONS_BLOCKED_DATABASES contiene un nombre de base inválido.');
         }
     }
-    $blockedDbs[] = 'escuela';
     $allowedDbs = array_map('strtolower', $allowedDbs);
     $blockedDbs = array_map('strtolower', $blockedDbs);
+
+    // `escuela` está protegida por defecto. Solo se libera con una variable explícita y confirmando un respaldo.
+    $unlockedDbs = [];
+    $unlockRaw = getenv('MIGRATIONS_UNLOCK_PROTECTED_DATABASES');
+    if ($unlockRaw !== false) {
+        if (!is_string($unlockRaw) || trim($unlockRaw) === '') {
+            throw new MigrationException('MIGRATIONS_UNLOCK_PROTECTED_DATABASES está definido pero vacío.');
+        }
+        $unlockedDbs = parseCsvEnv($unlockRaw);
+        if ($unlockedDbs === []) {
+            throw new MigrationException('MIGRATIONS_UNLOCK_PROTECTED_DATABASES está vacío después de parsear.');
+        }
+        foreach ($unlockedDbs as $databaseName) {
+            if (preg_match('/^[A-Za-z0-9_$-]+$/D', $databaseName) !== 1) {
+                throw new MigrationException('MIGRATIONS_UNLOCK_PROTECTED_DATABASES contiene un nombre de base inválido.');
+            }
+        }
+        if (($options['backup-confirmed'] ?? '') !== 'YES') {
+            throw new MigrationException(
+                'Para migrar una base protegida debes confirmar que existe un respaldo reciente con --backup-confirmed=YES.'
+            );
+        }
+        $unlockedDbs = array_map('strtolower', $unlockedDbs);
+    }
+    foreach (array_diff(['escuela'], $unlockedDbs) as $protectedDb) {
+        $blockedDbs[] = $protectedDb;
+    }
 
     $expectedEnvId = getenv('MIGRATIONS_ENV_ID');
     if (!is_string($expectedEnvId) || trim($expectedEnvId) === '') {
@@ -145,9 +171,9 @@ function assertWriteAuthorization(MigrationRepository $repository, array $option
 }
 
 $command = $argv[1] ?? 'status';
-$allowed = ['status', 'init', 'up', 'history'];
+$allowed = ['status', 'init', 'up', 'history', 'recover'];
 if (!in_array($command, $allowed, true)) {
-    fwrite(STDERR, "Uso: php migrate.php [status|init|up|history] [--target-db=...] [--env-id=...] [--confirm-write=YES]" . PHP_EOL);
+    fwrite(STDERR, "Uso: php migrate.php [status|init|up|history|recover] [--target-db=...] [--env-id=...] [--confirm-write=YES] [--migration=<id>] [--backup-confirmed=YES]" . PHP_EOL);
     exit(1);
 }
 
@@ -219,6 +245,22 @@ try {
 
     assertWriteAuthorization($repository, $options);
 
+    if ($command === 'recover') {
+        $migrationId = trim($options['migration'] ?? '');
+        if ($migrationId === '') {
+            throw new MigrationException('Falta el parámetro obligatorio --migration=<id> para recover.');
+        }
+        $result = $runner->recover($migrationId);
+        fwrite(
+            STDOUT,
+            sprintf(
+                "Estado de recuperación de %s liberado (estado anterior: %s). Ejecuta ahora 'up' para repetirla.",
+                $result['id'],
+                $result['estado_anterior']
+            ) . PHP_EOL
+        );
+        exit(0);
+    }
     if ($command === 'init') {
         $databaseName = $repository->currentDatabaseName();
         \App\Core\DatabaseLock::run(
@@ -227,7 +269,7 @@ try {
             static function () use ($repository): void {
                 $repository->initializeTable();
             },
-            15
+            MigrationRunner::LOCK_TIMEOUT_SECONDS
         );
         fwrite(STDOUT, "Tablas de control y recuperación de migraciones inicializadas/verificadas." . PHP_EOL);
         exit(0);
