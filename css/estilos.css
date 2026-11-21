@@ -2166,3 +2166,26 @@ body.tc-body:not(.tc-collapsed) .tc-sidebar {
 }
 
 /* fin panel de administración */
+.class-create-form {
+  display: grid;
+  gap: 10px;
+  max-width: 540px;
+}
+
+.class-create-form label {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #20242b;
+}
+
+.class-create-form input,
+.class-create-form select {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #cbd1dc;
+  border-radius: 6px;
+  background: #fff;
+  color: #20242b;
+  font-size: 14px;
+}

@@ -8,10 +8,10 @@ final class Permissions
     private const ROLE_PERMISSIONS = [
         'administrador' => ['*'],
         'director' => [
-            'students.read', 'professors.read', 'classes.read', 'attendance.read',
-            'tariffs.read', 'payments.read', 'debts.read', 'private_classes.read',
-            'reports.read', 'billing_config.read', 'notifications.read_own',
-            'notifications.mark_own', 'enrollments.read',
+            'students.read', 'professors.read', 'classes.read', 'classes.manage',
+            'attendance.read', 'tariffs.read', 'payments.read', 'debts.read',
+            'private_classes.read', 'reports.read', 'billing_config.read',
+            'notifications.read_own', 'notifications.mark_own', 'enrollments.read',
         ],
         'maestro' => [
             'students.read_assigned', 'classes.read_assigned', 'attendance.read_assigned',

@@ -94,8 +94,11 @@ try {
     exit('No se pudieron cargar los reportes.');
 }
 
-$escape = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 $csrfToken = $escape(csrf_token());
+$correoUsuario = (string) ($_SESSION['correo'] ?? 'Dirección');
+$rolActual = (string) ($_SESSION['rol'] ?? '');
+$puedeCrearClases = in_array($rolActual, ['administrador', 'director'], true);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -103,105 +106,219 @@ $csrfToken = $escape(csrf_token());
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Panel de dirección | Team Cats</title>
-    <link rel="stylesheet" href="css/estilos.css">
+    <link rel="stylesheet" href="css/estilos.css?v=<?= (int) filemtime(__DIR__ . '/css/estilos.css') ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 </head>
-<body class="role-dashboard-page">
-    <header class="role-dashboard-header">
-        <div>
-            <span class="admin-eyebrow">TEAM CATS · DIRECCIÓN</span>
-            <h1>Panel de dirección</h1>
-            <p>Indicadores generales y reportes financieros.</p>
-        </div>
-        <div class="admin-account">
-            <span><?= $escape($_SESSION['correo'] ?? '') ?></span>
+<body class="tc-body tc-collapsed">
+    <div class="tc-topbar">
+        <button class="tc-menu-btn" id="tc-menu-btn" type="button" aria-label="Mostrar u ocultar el menú" aria-controls="tc-sidebar">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <a class="tc-topbar-brand" href="dashboard_director.php">TEAM CATS</a>
+        <div class="tc-topbar-user">
+            <span class="tc-topbar-role"><?= $escape($correoUsuario) ?></span>
             <form method="post" action="logout.php">
                 <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
-                <button type="submit" class="admin-logout">Cerrar sesión</button>
+                <button type="submit" class="tc-logout">
+                    <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                    <span>Cerrar sesión</span>
+                </button>
             </form>
         </div>
-    </header>
+    </div>
 
-    <main class="role-dashboard-content">
-        <section class="role-dashboard-welcome">
-            <div>
-                <span class="admin-eyebrow">RESUMEN · <?= $escape(date('d/m/Y')) ?></span>
-                <h2>Vista general de la escuela</h2>
-                <p>Consulta de indicadores generales. Este panel no permite modificar registros.</p>
-            </div>
-        </section>
+    <aside class="tc-sidebar" id="tc-sidebar" aria-label="Menú de dirección">
+        <a class="tc-sidebar-logo" href="dashboard_director.php">
+            <img src="imagenes/Logo.png" alt="Logo de Team Cats">
+            <span>Escuela de Jiu-Jitsu</span>
+        </a>
+        <ul class="tc-menu" aria-label="Secciones de dirección">
+            <li>
+                <a class="tc-link is-active" href="#resumen" aria-current="page">
+                    <i class="fa-solid fa-chart-line" aria-hidden="true"></i>Resumen
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="#reporte-financiero">
+                    <i class="fa-solid fa-sack-dollar" aria-hidden="true"></i>Reporte financiero
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="#proximos-vencimientos">
+                    <i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i>Vencimientos
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="#adeudos-principales">
+                    <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>Adeudos
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="modulos/clases/clases.php">
+                    <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Gestionar clases
+                </a>
+            </li>
+        </ul>
+    </aside>
 
-        <?php foreach ($warnings as $warning): ?>
-            <p class="auth-error admin-message" role="alert"><?= $escape($warning) ?></p>
-        <?php endforeach; ?>
+    <div class="tc-overlay" id="tc-overlay"></div>
 
-        <section class="role-dashboard-stats" aria-label="Indicadores generales">
-            <article><span>Alumnos inscritos</span><strong><?= number_format($studentsTotal) ?></strong></article>
-            <article><span>Alumnos activos</span><strong><?= number_format((int) $summary['alumnos_activos']) ?></strong></article>
-            <article><span>Pagos registrados hoy</span><strong><?= number_format($paymentsToday) ?></strong></article>
-            <article><span>Adeudos pendientes o vencidos</span><strong><?= number_format((int) $summary['cargos_pendientes']) ?></strong></article>
-        </section>
+    <div class="tc-main">
+        <main class="tc-content" id="resumen">
+            <p class="tc-breadcrumb">
+                <a href="dashboard_director.php">Dirección</a>
+                <i class="fa-solid fa-angle-right" aria-hidden="true"></i><span>Panel de dirección</span>
+            </p>
 
-        <section class="role-dashboard-section">
-            <div class="role-dashboard-section-heading">
-                <h2>Reporte financiero (RF-08)</h2>
-                <span class="admin-hint">Tarifas activas: <?= number_format((int) $summary['tarifas_activas']) ?></span>
-            </div>
-            <div class="role-dashboard-section-body">
-                <div class="role-dashboard-stats" aria-label="Ingresos por periodo">
-                    <article><span>Ingreso diario</span><strong>$<?= $escape($income['diario']) ?></strong></article>
-                    <article><span>Ingreso semanal</span><strong>$<?= $escape($income['semanal']) ?></strong></article>
-                    <article><span>Ingreso mensual</span><strong>$<?= $escape($income['mensual']) ?></strong></article>
-                    <article><span>Ingreso anual</span><strong>$<?= $escape($income['anual']) ?></strong></article>
+            <section class="tc-welcome">
+                <div>
+                    <span class="tc-eyebrow">TEAM CATS · DIRECCIÓN</span>
+                    <h1>Panel de dirección</h1>
+                    <p>Indicadores generales, creación y administración de clases y reportes financieros.</p>
                 </div>
-                <p class="admin-hint">Pagos históricos sin clasificar este mes: <?= number_format((int) $summary['pagos_historicos_sin_clasificar_mes']) ?></p>
-            </div>
-        </section>
+                <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+            </section>
 
-        <section class="role-dashboard-section">
-            <div class="role-dashboard-section-heading"><h2>Próximos vencimientos · 7 días</h2></div>
-            <?php if ($nextDue === []): ?>
-                <div class="role-dashboard-empty">No hay vencimientos próximos registrados.</div>
-            <?php else: ?>
-                <div class="admin-table-wrap">
-                    <table class="admin-table">
-                        <thead><tr><th>Alumno</th><th>Periodo</th><th>Vencimiento</th><th>Importe</th></tr></thead>
-                        <tbody>
-                            <?php foreach ($nextDue as $row): ?>
-                                <tr>
-                                    <td data-label="Alumno"><?= $escape($row['alumno'] ?? '') ?></td>
-                                    <td data-label="Periodo"><?= $escape($row['periodo'] ?? '') ?></td>
-                                    <td data-label="Vencimiento"><?= $escape($row['fecha_vencimiento'] ?? '') ?></td>
-                                    <td data-label="Importe">$<?= $escape($row['importe'] ?? '0.00') ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </section>
+            <?php foreach ($warnings as $warning): ?>
+                <p class="auth-error admin-message" role="alert"><?= $escape($warning) ?></p>
+            <?php endforeach; ?>
 
-        <section class="role-dashboard-section">
-            <div class="role-dashboard-section-heading"><h2>Adeudos principales</h2></div>
-            <?php if ($topDebts === []): ?>
-                <div class="role-dashboard-empty">No hay adeudos pendientes.</div>
-            <?php else: ?>
-                <div class="admin-table-wrap">
-                    <table class="admin-table">
-                        <thead><tr><th>Alumno</th><th>Periodo</th><th>Saldo pendiente</th><th>Estado</th></tr></thead>
-                        <tbody>
-                            <?php foreach ($topDebts as $debt): ?>
-                                <tr>
-                                    <td data-label="Alumno"><?= $escape($debt['alumno'] ?? '') ?></td>
-                                    <td data-label="Periodo"><?= $escape($debt['periodo'] ?? '') ?></td>
-                                    <td data-label="Saldo pendiente">$<?= $escape($debt['saldo_pendiente'] ?? '0.00') ?></td>
-                                    <td data-label="Estado"><?= $escape(ucfirst((string) ($debt['estado'] ?? ''))) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+            <section class="tc-metrics tc-metrics-4" aria-label="Indicadores generales">
+                <article class="tc-metric">
+                    <span class="tc-metric-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span>
+                    <span class="tc-metric-label">Alumnos inscritos</span>
+                    <span class="tc-metric-value"><?= number_format($studentsTotal) ?></span>
+                </article>
+                <article class="tc-metric">
+                    <span class="tc-metric-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
+                    <span class="tc-metric-label">Alumnos activos</span>
+                    <span class="tc-metric-value"><?= number_format((int) $summary['alumnos_activos']) ?></span>
+                </article>
+                <article class="tc-metric">
+                    <span class="tc-metric-icon"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i></span>
+                    <span class="tc-metric-label">Pagos registrados hoy</span>
+                    <span class="tc-metric-value"><?= number_format($paymentsToday) ?></span>
+                </article>
+                <article class="tc-metric<?= (int) $summary['cargos_pendientes'] > 0 ? ' tc-metric-alert' : '' ?>">
+                    <span class="tc-metric-icon"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i></span>
+                    <span class="tc-metric-label">Adeudos pendientes o vencidos</span>
+                    <span class="tc-metric-value"><?= number_format((int) $summary['cargos_pendientes']) ?></span>
+                </article>
+            </section>
+
+            <section class="tc-panel" id="reporte-financiero">
+                <div class="tc-panel-head">
+                    <div>
+                        <span class="tc-eyebrow">FINANZAS</span>
+                        <h2>Reporte financiero (RF-08)</h2>
+                    </div>
+                    <span class="tc-muted">Tarifas activas: <?= number_format((int) $summary['tarifas_activas']) ?></span>
                 </div>
-            <?php endif; ?>
-        </section>
-    </main>
+                <div class="tc-metrics tc-metrics-4" aria-label="Ingresos por periodo">
+                    <article class="tc-metric">
+                        <span class="tc-metric-icon"><i class="fa-solid fa-coins" aria-hidden="true"></i></span>
+                        <span class="tc-metric-label">Ingreso diario</span>
+                        <span class="tc-metric-value tc-metric-text">$<?= $escape($income['diario']) ?></span>
+                    </article>
+                    <article class="tc-metric">
+                        <span class="tc-metric-icon"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i></span>
+                        <span class="tc-metric-label">Ingreso semanal</span>
+                        <span class="tc-metric-value tc-metric-text">$<?= $escape($income['semanal']) ?></span>
+                    </article>
+                    <article class="tc-metric">
+                        <span class="tc-metric-icon"><i class="fa-solid fa-calendar" aria-hidden="true"></i></span>
+                        <span class="tc-metric-label">Ingreso mensual</span>
+                        <span class="tc-metric-value tc-metric-text">$<?= $escape($income['mensual']) ?></span>
+                    </article>
+                    <article class="tc-metric">
+                        <span class="tc-metric-icon"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i></span>
+                        <span class="tc-metric-label">Ingreso anual</span>
+                        <span class="tc-metric-value tc-metric-text">$<?= $escape($income['anual']) ?></span>
+                    </article>
+                </div>
+                <p class="tc-muted" style="margin-top: 14px;">
+                    Pagos históricos sin clasificar este mes: <?= number_format((int) $summary['pagos_historicos_sin_clasificar_mes']) ?>
+                </p>
+            </section>
+
+            <section class="tc-panel" id="proximos-vencimientos">
+                <div class="tc-panel-head">
+                    <div>
+                        <span class="tc-eyebrow">COBRANZA</span>
+                        <h2>Próximos vencimientos · 7 días</h2>
+                    </div>
+                </div>
+                <?php if ($nextDue === []): ?>
+                    <div class="tc-empty"><i class="fa-regular fa-calendar" aria-hidden="true"></i><span>No hay vencimientos próximos registrados.</span></div>
+                <?php else: ?>
+                    <div class="admin-table-wrap">
+                        <table class="admin-table">
+                            <thead><tr><th>Alumno</th><th>Periodo</th><th>Vencimiento</th><th>Importe</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($nextDue as $row): ?>
+                                    <tr>
+                                        <td data-label="Alumno"><?= $escape($row['alumno'] ?? '') ?></td>
+                                        <td data-label="Periodo"><?= $escape($row['periodo'] ?? '') ?></td>
+                                        <td data-label="Vencimiento"><?= $escape($row['fecha_vencimiento'] ?? '') ?></td>
+                                        <td data-label="Importe">$<?= $escape($row['importe'] ?? '0.00') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <section class="tc-panel" id="adeudos-principales">
+                <div class="tc-panel-head">
+                    <div>
+                        <span class="tc-eyebrow">CARTERA</span>
+                        <h2>Adeudos principales</h2>
+                    </div>
+                </div>
+                <?php if ($topDebts === []): ?>
+                    <div class="tc-empty tc-empty-ok"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>No hay adeudos pendientes.</span></div>
+                <?php else: ?>
+                    <div class="admin-table-wrap">
+                        <table class="admin-table">
+                            <thead><tr><th>Alumno</th><th>Periodo</th><th>Saldo pendiente</th><th>Estado</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($topDebts as $debt): ?>
+                                    <tr>
+                                        <td data-label="Alumno"><?= $escape($debt['alumno'] ?? '') ?></td>
+                                        <td data-label="Periodo"><?= $escape($debt['periodo'] ?? '') ?></td>
+                                        <td data-label="Saldo pendiente">$<?= $escape($debt['saldo_pendiente'] ?? '0.00') ?></td>
+                                        <td data-label="Estado"><?= $escape(ucfirst((string) ($debt['estado'] ?? ''))) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <section class="tc-panel" id="clases">
+                <div class="tc-panel-head">
+                    <div>
+                        <span class="tc-eyebrow">ACADEMIA</span>
+                        <h2>Clases</h2>
+                    </div>
+                </div>
+                <p class="tc-muted">Crear y gestionar clases.</p>
+                <div class="tc-actions" style="margin-top: 14px;">
+                    <a href="modulos/clases/clases.php">
+                        <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>Ver clases
+                    </a>
+                    <?php if ($puedeCrearClases): ?>
+                        <a href="modulos/clases/crear_cl.php">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>Crear clase
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </section>
+        </main>
+        <footer class="tc-footer">Team Cats · Escuela de Jiu-Jitsu</footer>
+    </div>
+    <script src="js/panel-shell.js?v=<?= (int) filemtime(__DIR__ . '/js/panel-shell.js') ?>"></script>
 </body>
 </html>

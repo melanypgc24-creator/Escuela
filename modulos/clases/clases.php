@@ -2,43 +2,145 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
-require_permission('classes.read');
-require_once dirname(__DIR__, 2) . '/config/database.php';
+require_permission('classes.manage');
 
-$sql = 'SELECT cl.id_clase, cl.nombre_clase, cl.dias, cl.hora_inicio, cl.hora_fin, cl.capacidad,
-               p.nombre AS prof_nombre, p.apellidos AS prof_apellidos
-        FROM clases cl
-        JOIN profesor p ON cl.id_profesor = p.id_profesor
-        ORDER BY cl.nombre_clase, cl.hora_inicio';
-$clases = $conexion->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-$canManage = current_authenticated_role() === 'administrador';
+$pdo = require dirname(__DIR__, 2) . '/config/conexion.php';
+$conexion = $pdo;
+
+$error = null;
+$success = null;
+
+if (isset($_GET['eliminada']) && $_GET['eliminada'] === '1') {
+    $success = 'La clase se eliminó correctamente.';
+} elseif (isset($_GET['error'])) {
+    $error = match ((string) $_GET['error']) {
+        'tiene_asistencias' => 'No se puede eliminar la clase porque ya tiene asistencias registradas.',
+        'no_encontrada'     => 'La clase seleccionada no existe o ya fue eliminada.',
+        'id_invalido'       => 'El identificador de la clase no es válido.',
+        default             => 'No se pudo eliminar la clase.',
+    };
+}
+
+$clases = [];
+
+try {
+    $stmt = $conexion->query(
+        'SELECT c.id_clase,
+                c.nombre_clase,
+                c.id_profesor,
+                c.dias,
+                c.hora_inicio,
+                c.hora_fin,
+                c.capacidad,
+                p.nombre,
+                p.apellidos
+         FROM clases c
+         LEFT JOIN profesor p ON p.id_profesor = c.id_profesor
+         ORDER BY c.id_clase DESC'
+    );
+    $clases = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (\Throwable $exception) {
+    error_log('Error al listar clases: ' . $exception->getMessage());
+    $error = $error ?? 'No se pudieron cargar las clases registradas.';
+}
+
 $escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
-include dirname(__DIR__, 2) . '/includes/header.php';
+$time = static fn (mixed $value): string => is_string($value) && $value !== '' ? substr($value, 0, 5) : '—';
+$cssFile = dirname(__DIR__, 2) . '/css/estilos.css';
+$cssVer = is_file($cssFile) ? (int) filemtime($cssFile) : 1;
+$csrfToken = $escape(csrf_token());
 ?>
-<main class="admin-main">
-    <h1>Clases</h1>
-    <?php if ($canManage): ?><a href="crear_cl.php">Agregar clase</a><?php endif; ?>
-    <div class="admin-table-wrap">
-        <table class="admin-table">
-            <thead>
-                <tr><th>Clase</th><th>Profesor</th><th>Días</th><th>Horario</th><th>Capacidad</th><?php if ($canManage): ?><th>Acciones</th><?php endif; ?></tr>
-            </thead>
-            <tbody>
-                <?php foreach ($clases as $clase): ?>
-                    <tr>
-                        <td><?= $escape($clase['nombre_clase']) ?></td>
-                        <td><?= $escape($clase['prof_nombre'] . ' ' . $clase['prof_apellidos']) ?></td>
-                        <td><?= $escape($clase['dias']) ?></td>
-                        <td><?= $escape(substr($clase['hora_inicio'], 0, 5) . ' - ' . substr($clase['hora_fin'], 0, 5)) ?></td>
-                        <td><?= $escape($clase['capacidad']) ?></td>
-                        <?php if ($canManage): ?><td><a href="editar_cl.php?id=<?= $escape($clase['id_clase']) ?>">Editar</a></td><?php endif; ?>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if ($clases === []): ?>
-                    <tr><td colspan="<?= $canManage ? '6' : '5' ?>">No hay clases registradas.</td></tr>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Clases | Team Cats</title>
+    <link rel="stylesheet" href="/Escuela/css/estilos.css?v=<?= $cssVer ?>">
+</head>
+<body class="role-dashboard-page">
+    <header class="role-dashboard-header">
+        <div>
+            <span class="admin-eyebrow">TEAM CATS · CLASES</span>
+            <h1>Gestión de clases</h1>
+            <p>Consulta, crea y edita las clases y horarios de la escuela.</p>
+        </div>
+        <div class="admin-account">
+            <span><?= $escape($_SESSION['correo'] ?? '') ?></span>
+            <form method="post" action="/Escuela/logout.php">
+                <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+                <button type="submit" class="admin-logout">Cerrar sesión</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="role-dashboard-content">
+        <section class="role-dashboard-section">
+            <div class="role-dashboard-section-heading">
+                <h2>Clases registradas</h2>
+                <div class="role-dashboard-actions">
+                    <a href="crear_cl.php">Crear clase</a>
+                </div>
+            </div>
+
+            <div class="role-dashboard-section-body">
+                <?php if ($success !== null): ?>
+                    <p class="auth-success admin-message" role="status"><?= $escape($success) ?></p>
                 <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</main>
-<?php include dirname(__DIR__, 2) . '/includes/footer.php'; ?>
+
+                <?php if ($error !== null): ?>
+                    <p class="auth-error admin-message" role="alert"><?= $escape($error) ?></p>
+                <?php endif; ?>
+
+                <?php if ($clases === []): ?>
+                    <div class="role-dashboard-empty">No hay clases registradas todavía.</div>
+                <?php else: ?>
+                    <div class="admin-table-wrap">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Clase</th>
+                                    <th>Profesor</th>
+                                    <th>Días</th>
+                                    <th>Horario</th>
+                                    <th>Capacidad</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($clases as $clase): ?>
+                                    <?php
+                                    $profNombre = trim((string) (($clase['nombre'] ?? '') . ' ' . ($clase['apellidos'] ?? '')));
+                                    if ($profNombre === '') {
+                                        $profNombre = 'Sin asignar';
+                                    }
+                                    $idClaseStr = (string) ($clase['id_clase'] ?? '');
+                                    $nombreClaseStr = (string) ($clase['nombre_clase'] ?? '');
+                                    ?>
+                                    <tr>
+                                        <td data-label="Clase"><strong><?= $escape($nombreClaseStr) ?></strong></td>
+                                        <td data-label="Profesor"><?= $escape($profNombre) ?></td>
+                                        <td data-label="Días"><?= $escape($clase['dias'] ?? '') ?></td>
+                                        <td data-label="Horario"><?= $escape($time($clase['hora_inicio'] ?? '') . ' - ' . $time($clase['hora_fin'] ?? '')) ?></td>
+                                        <td data-label="Capacidad"><?= $escape((string) ($clase['capacidad'] ?? 0)) ?></td>
+                                        <td data-label="Acciones">
+                                            <div class="admin-user-actions">
+                                                <a class="admin-save" href="editar_cl.php?id=<?= $escape($idClaseStr) ?>">Editar</a>
+                                                <form method="post" action="eliminar_cl.php" onsubmit="return confirm('¿Seguro que deseas eliminar la clase &quot;<?= $escape(addslashes($nombreClaseStr)) ?>&quot;?');">
+                                                    <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+                                                    <input type="hidden" name="id_clase" value="<?= $escape($idClaseStr) ?>">
+                                                    <button type="submit" class="admin-delete">Eliminar</button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

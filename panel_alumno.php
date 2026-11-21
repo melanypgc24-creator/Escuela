@@ -37,21 +37,141 @@ $notifications = [];
 $failedSections = [];
 $linked = is_int($studentId);
 
+$inscriptionSuccess = null;
+$inscriptionError = null;
+$availableClasses = [];
+
 if ($linked) {
     try {
         $pdo = require __DIR__ . '/config/conexion.php';
+
+        // Procesar solicitud de inscripción del alumno
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['accion'] ?? '') === 'solicitar_inscripcion') {
+            require_valid_csrf();
+
+            $rawClassId = $_POST['id_clase'] ?? null;
+            $classId = ($rawClassId === '' || $rawClassId === null)
+                ? false
+                : filter_var($rawClassId, FILTER_VALIDATE_INT);
+
+            if ($classId === false || $classId < 0) {
+                $inscriptionError = 'La clase seleccionada no es válida.';
+            } else {
+                // Verifica que la clase exista y consulta su capacidad
+                $classStmt = $pdo->prepare('SELECT id_clase, capacidad FROM clases WHERE id_clase = :id_clase LIMIT 1');
+                $classStmt->execute(['id_clase' => $classId]);
+                $classRow = $classStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!is_array($classRow)) {
+                    $inscriptionError = 'La clase seleccionada ya no está disponible.';
+                } else {
+                    // Verifica cupo ocupado (solo inscripciones aceptadas)
+                    $occupiedStmt = $pdo->prepare(
+                        'SELECT COUNT(*) FROM inscripciones_clases WHERE id_clase = :id_clase AND estado = "aceptada"'
+                    );
+                    $occupiedStmt->execute(['id_clase' => $classId]);
+                    $occupied = (int) $occupiedStmt->fetchColumn();
+
+                    if ($occupied >= (int) ($classRow['capacidad'] ?? 0)) {
+                        $inscriptionError = 'Esta clase ya alcanzó su capacidad máxima.';
+                    } else {
+                        // Verifica si ya existe una solicitud/inscripción del alumno para esa clase
+                        $existingStmt = $pdo->prepare(
+                            'SELECT id_inscripcion, estado FROM inscripciones_clases
+                             WHERE id_alumno = :id_alumno AND id_clase = :id_clase LIMIT 1'
+                        );
+                        $existingStmt->execute([
+                            'id_alumno' => $studentId,
+                            'id_clase'  => $classId,
+                        ]);
+                        $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
+
+                        if (is_array($existing)) {
+                            if (($existing['estado'] ?? '') === 'aceptada') {
+                                $inscriptionError = 'Ya estás inscrito en esta clase.';
+                            } elseif (($existing['estado'] ?? '') === 'pendiente') {
+                                $inscriptionError = 'Ya tienes una solicitud pendiente para esta clase.';
+                            } else {
+                                // Si había sido rechazada anteriormente, permite volver a solicitar
+                                $reopenStmt = $pdo->prepare(
+                                    'UPDATE inscripciones_clases
+                                     SET estado = "pendiente",
+                                         fecha_solicitud = CURRENT_TIMESTAMP,
+                                         fecha_resolucion = NULL,
+                                         revisado_por_profesor = NULL
+                                     WHERE id_inscripcion = :id_inscripcion'
+                                );
+                                $reopenStmt->execute(['id_inscripcion' => (int) $existing['id_inscripcion']]);
+                                $inscriptionSuccess = 'Tu solicitud de inscripción fue enviada de nuevo al profesor.';
+                            }
+                        } else {
+                            $insertStmt = $pdo->prepare(
+                                'INSERT INTO inscripciones_clases (id_alumno, id_clase, estado)
+                                 VALUES (:id_alumno, :id_clase, "pendiente")'
+                            );
+                            $insertStmt->execute([
+                                'id_alumno' => $studentId,
+                                'id_clase'  => $classId,
+                            ]);
+                            $inscriptionSuccess = 'Solicitud enviada. Espera a que el profesor la apruebe.';
+                        }
+                    }
+                }
+            }
+            $section = 'inscripcion';
+        }
+
         $portal = new \App\Models\StudentPortalModel($pdo);
         $profile = $portal->profile($studentId);
-        // Las notificaciones se cargan siempre para mostrar el indicador de pendientes en el menú.
         $notifications = $portal->notifications((int) $_SESSION['id_usuario']);
 
+        // Cargar clases aceptadas en inscripciones_clases para Inicio y Mis clases
+        $loadAcceptedClasses = static function (\PDO $db, int $alumnoId): array {
+            $stmt = $db->prepare(
+                'SELECT c.id_clase,
+                        c.nombre_clase,
+                        c.dias,
+                        c.hora_inicio,
+                        c.hora_fin,
+                        TRIM(CONCAT(COALESCE(p.nombre, ""), " ", COALESCE(p.apellidos, ""))) AS profesor
+                 FROM inscripciones_clases ic
+                 JOIN clases c ON c.id_clase = ic.id_clase
+                 LEFT JOIN profesor p ON p.id_profesor = c.id_profesor
+                 WHERE ic.id_alumno = :id_alumno AND ic.estado = "aceptada"
+                 ORDER BY c.nombre_clase'
+            );
+            $stmt->execute(['id_alumno' => $alumnoId]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        };
+
         if ($section === 'inicio') {
-            $classes = $portal->classes($studentId);
+            $classes = $loadAcceptedClasses($pdo, $studentId);
             $debts = $portal->debts($studentId);
             $payments = $portal->payments($studentId, 3);
             $attendance = $portal->attendance($studentId, 5);
         } elseif ($section === 'clases') {
-            $classes = $portal->classes($studentId);
+            $classes = $loadAcceptedClasses($pdo, $studentId);
+        } elseif ($section === 'inscripcion') {
+            $availStmt = $pdo->prepare(
+                'SELECT c.id_clase,
+                        c.nombre_clase,
+                        c.dias,
+                        c.hora_inicio,
+                        c.hora_fin,
+                        c.capacidad,
+                        TRIM(CONCAT(COALESCE(p.nombre, ""), " ", COALESCE(p.apellidos, ""))) AS profesor,
+                        ic.estado AS estado_solicitud,
+                        (SELECT COUNT(*)
+                         FROM inscripciones_clases ic2
+                         WHERE ic2.id_clase = c.id_clase AND ic2.estado = "aceptada") AS inscritos_aceptados
+                 FROM clases c
+                 LEFT JOIN profesor p ON p.id_profesor = c.id_profesor
+                 LEFT JOIN inscripciones_clases ic
+                        ON ic.id_clase = c.id_clase AND ic.id_alumno = :id_alumno
+                 ORDER BY c.nombre_clase, c.hora_inicio'
+            );
+            $availStmt->execute(['id_alumno' => $studentId]);
+            $availableClasses = $availStmt->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($section === 'asistencias') {
             $attendance = $portal->attendance($studentId);
         } elseif ($section === 'pagos') {
@@ -411,13 +531,79 @@ foreach ($menu as $entry) {
                 </section>
             <?php elseif ($section === 'inscripcion'): ?>
                 <section class="tc-panel">
-                    <div class="tc-panel-head"><div><span class="tc-eyebrow">CLASES</span><h2>Inscribirme a clases</h2></div></div>
-                    <div class="tc-soon">
-                        <span class="tc-soon-icon"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></span>
-                        <h3>Muy pronto podrás inscribirte desde aquí</h3>
-                        <p>Estamos preparando la inscripción en línea. Mientras tanto, consulta tus clases actuales o pide apoyo en recepción.</p>
-                        <a class="admin-save" href="panel_alumno.php?seccion=clases">Ver mis clases</a>
+                    <div class="tc-panel-head">
+                        <div>
+                            <span class="tc-eyebrow">CLASES DISPONIBLES</span>
+                            <h2>Inscribirme a clases</h2>
+                        </div>
+                        <a class="tc-link-more" href="panel_alumno.php?seccion=clases">Ver mis clases</a>
                     </div>
+
+                    <?php if ($inscriptionSuccess !== null): ?>
+                        <p class="auth-success admin-message" role="status" style="margin-bottom: 14px;"><?= $escape($inscriptionSuccess) ?></p>
+                    <?php endif; ?>
+
+                    <?php if ($inscriptionError !== null): ?>
+                        <p class="auth-error admin-message" role="alert" style="margin-bottom: 14px;"><?= $escape($inscriptionError) ?></p>
+                    <?php endif; ?>
+
+                    <?php if ($availableClasses === []): ?>
+                        <div class="tc-empty">
+                            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+                            <span>No hay clases disponibles por el momento.</span>
+                        </div>
+                    <?php else: ?>
+                        <div class="admin-table-wrap">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Clase</th>
+                                        <th>Profesor</th>
+                                        <th>Días</th>
+                                        <th>Horario</th>
+                                        <th>Lugares</th>
+                                        <th>Estado / Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($availableClasses as $row): ?>
+                                        <?php
+                                        $capacidad = (int) ($row['capacidad'] ?? 0);
+                                        $ocupados  = (int) ($row['inscritos_aceptados'] ?? 0);
+                                        $disponibles = max(0, $capacidad - $ocupados);
+                                        $estado = (string) ($row['estado_solicitud'] ?? '');
+                                        $prof = trim((string) ($row['profesor'] ?? '')) ?: 'Sin asignar';
+                                        ?>
+                                        <tr>
+                                            <td data-label="Clase"><strong><?= $escape($row['nombre_clase'] ?? '') ?></strong></td>
+                                            <td data-label="Profesor"><?= $escape($prof) ?></td>
+                                            <td data-label="Días"><?= $escape($row['dias'] ?? '') ?></td>
+                                            <td data-label="Horario"><?= $escape($time($row['hora_inicio'] ?? '') . ' - ' . $time($row['hora_fin'] ?? '')) ?></td>
+                                            <td data-label="Lugares"><?= $escape($disponibles . ' / ' . $capacidad) ?></td>
+                                            <td data-label="Estado / Acción">
+                                                <?php if ($estado === 'aceptada'): ?>
+                                                    <span class="admin-badge admin-badge-active">Inscrito</span>
+                                                <?php elseif ($estado === 'pendiente'): ?>
+                                                    <span class="tc-notice-state">Solicitud pendiente</span>
+                                                <?php elseif ($disponibles <= 0): ?>
+                                                    <span class="admin-badge admin-badge-inactive">Cupo lleno</span>
+                                                <?php else: ?>
+                                                    <form method="post" action="panel_alumno.php?seccion=inscripcion" style="margin:0;">
+                                                        <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+                                                        <input type="hidden" name="accion" value="solicitar_inscripcion">
+                                                        <input type="hidden" name="id_clase" value="<?= $escape((string) ($row['id_clase'] ?? '')) ?>">
+                                                        <button type="submit" class="admin-save">
+                                                            <?= $estado === 'rechazada' ? 'Volver a solicitar' : 'Solicitar inscripción' ?>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
                 </section>
             <?php elseif ($section === 'asistencias'): ?>
                 <?= $notice('asistencias') ?>
