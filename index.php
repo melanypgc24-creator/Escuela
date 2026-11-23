@@ -13,10 +13,10 @@ include __DIR__ . '/includes/header.php';
                 Cada entrenamiento es una oportunidad para superarte y mejorar.
             </p>
             <div class="botones-portada">
-                <a class="boton boton-principal" href="#clases">
+                <a class="boton boton-principal" href="clases_publicas.php">
                     Conoce nuestras clases <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
                 </a>
-                <a class="boton boton-secundario" href="#sobre-nosotros">Más sobre Team Cats</a>
+                <a class="boton boton-secundario" href="sobre_nosotros.php">Más sobre Team Cats</a>
             </div>
             <p class="titulo-valores-portada">Nosotros fomentamos la:</p>
             <div class="valores-portada" aria-label="Valores de Team Cats">
@@ -42,11 +42,17 @@ include __DIR__ . '/includes/header.php';
     </section>
 
     <section class="seccion-gimnasio" aria-labelledby="titulo-gimnasio">
-        <h2 id="titulo-gimnasio">Patio Matamoros</h2>
+        <h2 id="titulo-gimnasio">Nuestra instalación</h2>
         <div class="contenido-gimnasio">
-            <figure class="vista-gimnasio">
-                <img src="imagenes/EjemGym1.png" alt="Vista del gimnasio Team Cats en Patio Matamoros">
-            </figure>
+            <div
+                id="panorama-gimnasio"
+                class="vista-gimnasio"
+                role="region"
+                tabindex="0"
+                aria-label="Recorrido 360 del gimnasio Team Cats en Patio Matamoros. Arrastra para mirar alrededor."
+                data-panorama="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>/imagenes/Escenagym.jpg"
+                style="background-image: url('<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>/imagenes/Escenagym.jpg')"
+            ></div>
             <div class="detalles-gimnasio">
                 <article class="detalle-gimnasio">
                     <span class="icono-detalle-gimnasio" aria-hidden="true">
@@ -102,5 +108,19 @@ include __DIR__ . '/includes/header.php';
 </main>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
+<script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+<script>
+    const panorama = document.getElementById('panorama-gimnasio');
+    if (window.pannellum && panorama) {
+        window.pannellum.viewer('panorama-gimnasio', {
+            type: 'equirectangular',
+            panorama: panorama.dataset.panorama,
+            autoLoad: true,
+            minPitch: -35,
+            maxPitch: 35,
+            hfov: 90
+        });
+    }
+</script>
 </body>
 </html>

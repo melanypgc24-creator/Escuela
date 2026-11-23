@@ -1,0 +1,261 @@
+.pagina-clases {
+    min-height: calc(100vh - 76px);
+    padding: clamp(44px, 7vw, 88px) max(5vw, 24px) 84px;
+    background:
+        radial-gradient(ellipse at 92% 8%, #e8e2ff 0 10%, transparent 10.2%),
+        #f8f7fb;
+}
+
+.encabezado-clases {
+    max-width: 860px;
+    margin: 0 auto 42px;
+    text-align: center;
+}
+
+.etiqueta-clases {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 0 14px;
+    color: var(--home-purple);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.encabezado-clases h1 {
+    margin: 0 0 14px;
+    color: var(--home-ink);
+    font-size: clamp(32px, 5vw, 54px);
+    line-height: 1.1;
+}
+
+.encabezado-clases > p:last-child {
+    margin: 0;
+    color: #777287;
+    font-size: 17px;
+    line-height: 1.65;
+}
+
+.horario-semanal {
+    max-width: 1440px;
+    margin: 0 auto;
+    overflow: hidden;
+    border: 1px solid #e8e4f2;
+    border-radius: 18px;
+    background: #f3f2f6;
+    box-shadow: 0 18px 48px rgb(41 32 68 / 10%);
+}
+
+.cabecera-horario {
+    display: flex;
+    min-height: 82px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 18px 28px;
+    background: #292044;
+    color: #fff;
+}
+
+.cabecera-horario > div > p {
+    margin: 0 0 5px;
+    color: #c9b9ff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+}
+
+.cabecera-horario h2 {
+    margin: 0;
+    color: #fff;
+    font-size: clamp(18px, 2.4vw, 24px);
+}
+
+.cabecera-horario > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #e4dff1;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.dias-horario {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 12px;
+    padding: 20px;
+}
+
+.dia-horario {
+    min-width: 0;
+    min-height: 245px;
+    padding: 14px 12px;
+    border: 1px solid #e9e7ee;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.dia-horario h3 {
+    min-height: 42px;
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eeeaf5;
+    color: #292044;
+    font-size: 15px;
+    text-align: center;
+}
+
+.sesion-horario {
+    padding: 14px 12px;
+    border-radius: 11px;
+    background: #f8f6ff;
+}
+
+.tipo-sesion {
+    display: inline-block;
+    margin-bottom: 10px;
+    color: var(--home-purple);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+
+.sesion-horario h4 {
+    margin: 0 0 8px;
+    color: #292044;
+    font-size: 16px;
+    line-height: 1.3;
+}
+
+.detalle-sesion {
+    margin: 0 0 12px;
+    color: #777287;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.hora-sesion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    color: #292044;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.hora-sesion i {
+    margin-right: 3px;
+    color: var(--home-purple);
+}
+
+.dia-particular .sesion-horario {
+    background: #fff3f5;
+}
+
+.dia-particular .tipo-sesion {
+    color: #c53b5b;
+}
+
+.dia-sin-clase {
+    background: #f9f8fb;
+}
+
+.dia-sin-clase h3 {
+    color: #777287;
+}
+
+.dia-sin-clase > p {
+    margin: 40px 0 0;
+    color: #8d8999;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.nota-horario {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    max-width: 1440px;
+    margin: 18px auto 0;
+    color: #686477;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.nota-horario i {
+    margin-top: 3px;
+    color: var(--home-purple);
+}
+
+.solicitud-clase {
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+    max-width: 1440px;
+    margin: 40px auto 0;
+    text-align: center;
+}
+
+.solicitud-clase p {
+    margin: 0;
+    color: #292044;
+    font-size: clamp(17px, 2vw, 21px);
+    font-weight: 700;
+}
+
+.solicitud-clase .boton {
+    text-decoration: none;
+}
+
+@media (max-width: 1100px) {
+    .dias-horario {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .pagina-clases {
+        padding: 46px 18px 60px;
+    }
+
+    .cabecera-horario {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .dias-horario {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .dia-horario {
+        min-height: 220px;
+        padding: 12px 9px;
+    }
+
+    .dia-horario h3 {
+        font-size: 14px;
+    }
+
+    .sesion-horario {
+        padding: 12px 9px;
+    }
+}
+
+@media (max-width: 380px) {
+    .dias-horario {
+        grid-template-columns: 1fr;
+    }
+
+    .dia-horario {
+        min-height: 0;
+    }
+}

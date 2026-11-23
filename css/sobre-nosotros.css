@@ -1,0 +1,415 @@
+.pagina-sobre-nosotros {
+    padding: 46px max(5vw, 24px) 88px;
+    background: #f8f7fb;
+}
+
+.presentacion-equipo {
+    display: grid;
+    min-height: 340px;
+    align-content: center;
+    justify-items: center;
+    gap: 18px;
+    padding: 56px 24px;
+    border-radius: 24px;
+    background:
+        radial-gradient(ellipse at 92% 10%, rgb(255 255 255 / 12%) 0 15%, transparent 15.2%),
+        linear-gradient(135deg, #292044, #49318e);
+    color: #fff;
+    text-align: center;
+}
+
+.etiqueta-equipo {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    color: #d7caff;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.presentacion-equipo h1 {
+    max-width: 800px;
+    margin: 0;
+    color: #fff;
+    font-size: clamp(36px, 6vw, 64px);
+    line-height: 1.08;
+}
+
+.presentacion-equipo > p:not(.etiqueta-equipo) {
+    max-width: 650px;
+    margin: 0;
+    color: #e4dff1;
+    font-size: clamp(16px, 2vw, 19px);
+    line-height: 1.65;
+}
+
+.presentacion-equipo .boton {
+    margin-top: 6px;
+    text-decoration: none;
+}
+
+.historia-equipo {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
+    align-items: center;
+    gap: clamp(32px, 7vw, 96px);
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 88px 24px;
+}
+
+.etiqueta-seccion {
+    margin: 0 0 12px;
+    color: var(--home-purple);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.texto-historia h2,
+.encabezado-seminarios h2 {
+    margin: 0 0 18px;
+    color: var(--home-ink);
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1.15;
+}
+
+.texto-historia > p:not(.etiqueta-seccion) {
+    margin: 0 0 14px;
+    color: #686477;
+    font-size: 16px;
+    line-height: 1.8;
+}
+
+.dato-equipo {
+    padding: 32px;
+    border: 1px solid #e8e4f2;
+    border-radius: 20px;
+    background: #fff;
+    box-shadow: 0 16px 40px rgb(41 32 68 / 8%);
+    text-align: center;
+}
+
+.icono-equipo,
+.icono-actividad {
+    display: grid;
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 18px;
+    border-radius: 17px;
+    background: #eee8ff;
+    color: var(--home-purple);
+    font-size: 22px;
+    place-items: center;
+}
+
+.dato-equipo p {
+    margin: 0 0 6px;
+    color: #777287;
+    font-size: 13px;
+}
+
+.dato-equipo h3 {
+    margin: 0;
+    color: var(--home-ink);
+    font-size: 20px;
+}
+
+.separador-equipo {
+    display: block;
+    width: 100%;
+    height: 1px;
+    margin: 20px 0;
+    background: #eeeaf5;
+}
+
+.grado-equipo {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 13px;
+    border-radius: 999px;
+    background: #f5f2ff;
+    color: var(--home-purple);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.seminarios-equipo {
+    padding: 72px max(5vw, 24px);
+    border-radius: 24px;
+    background: #fff;
+}
+
+.encabezado-seminarios {
+    max-width: 720px;
+    margin: 0 auto 38px;
+    text-align: center;
+}
+
+.encabezado-seminarios > p:last-child {
+    margin: 0;
+    color: #777287;
+    font-size: 16px;
+    line-height: 1.7;
+}
+
+.detalles-seminarios {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    max-width: 1120px;
+    margin: 0 auto 34px;
+}
+
+.detalle-seminario {
+    padding: 24px;
+    border: 1px solid #eeeaf5;
+    border-radius: 16px;
+    background: #fbfaff;
+}
+
+.detalle-seminario > span {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    margin-bottom: 16px;
+    border-radius: 13px;
+    background: #eee8ff;
+    color: var(--home-purple);
+    place-items: center;
+}
+
+.detalle-seminario h3 {
+    margin: 0 0 8px;
+    color: var(--home-ink);
+    font-size: 17px;
+}
+
+.detalle-seminario p {
+    margin: 0;
+    color: #686477;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.actividad-equipo {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(28px, 5vw, 64px);
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 28px;
+    border: 1px solid #eeeaf5;
+    border-radius: 20px;
+    background: #fbfaff;
+}
+
+.icono-actividad {
+    margin: 0 0 20px;
+    background: #fff0f3;
+    color: #c53b5b;
+}
+
+.descripcion-actividad h3 {
+    margin: 0 0 12px;
+    color: var(--home-ink);
+    font-size: clamp(22px, 3vw, 30px);
+    line-height: 1.2;
+}
+
+.descripcion-actividad > p:not(.etiqueta-seccion) {
+    margin: 0 0 18px;
+    color: #686477;
+    font-size: 15px;
+    line-height: 1.75;
+}
+
+.enlace-facebook {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--home-purple);
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    text-underline-offset: 4px;
+}
+
+.enlace-facebook:hover {
+    text-decoration: underline;
+}
+
+.video-actividad {
+    min-width: 0;
+    border-radius: 14px;
+    background: #17151e;
+    box-shadow: 0 12px 30px rgb(41 32 68 / 16%);
+}
+
+.video-actividad .fb-video {
+    max-width: 100%;
+}
+
+.video-actividad iframe,
+.video-actividad span {
+    max-width: 100%;
+}
+
+.enlace-proximos-eventos {
+    max-width: 1120px;
+    margin: 22px auto 0;
+    color: #686477;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.enlace-proximos-eventos a {
+    color: var(--home-purple);
+    font-weight: 700;
+    text-underline-offset: 3px;
+}
+
+.ubicacion-opiniones {
+    max-width: 1440px;
+    margin: 56px auto 0;
+    padding: 48px;
+    border: 1px solid #e8e4f2;
+    border-radius: 24px;
+    background: #fff;
+    box-shadow: 0 16px 40px rgb(41 32 68 / 7%);
+}
+
+.encabezado-ubicacion {
+    max-width: 700px;
+    margin: 0 auto 30px;
+    text-align: center;
+}
+
+.encabezado-ubicacion h2 {
+    margin: 0 0 12px;
+    color: var(--home-ink);
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.15;
+}
+
+.encabezado-ubicacion > p:last-child {
+    margin: 0;
+    color: #777287;
+    font-size: 15px;
+    line-height: 1.65;
+}
+
+.panel-ubicacion {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+
+.panel-opiniones {
+    display: grid;
+    align-content: start;
+    min-width: 0;
+    min-height: 400px;
+    padding: 24px;
+    border: 1px solid #eeeaf5;
+    border-radius: 16px;
+    background: #f8f7fb;
+}
+
+.panel-opiniones .boton {
+    justify-self: start;
+    margin-top: 16px;
+    text-decoration: none;
+}
+
+.widget-resenas {
+    width: 100%;
+    min-width: 0;
+}
+
+.mapa-ubicacion {
+    min-width: 0;
+    min-height: 400px;
+    overflow: hidden;
+    border: 1px solid #e8e4f2;
+    border-radius: 16px;
+    background: #f3f2f6;
+}
+
+.mapa-ubicacion iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    border: 0;
+}
+
+@media (max-width: 760px) {
+    .pagina-sobre-nosotros {
+        padding: 28px 18px 56px;
+    }
+
+    .presentacion-equipo {
+        min-height: 300px;
+        padding: 44px 20px;
+        border-radius: 18px;
+    }
+
+    .historia-equipo {
+        grid-template-columns: 1fr;
+        gap: 28px;
+        padding: 58px 8px;
+    }
+
+    .dato-equipo {
+        padding: 26px;
+    }
+
+    .seminarios-equipo {
+        padding: 48px 18px;
+        border-radius: 18px;
+    }
+
+    .ubicacion-opiniones {
+        margin-top: 36px;
+        padding: 30px 18px;
+        border-radius: 18px;
+    }
+
+    .panel-ubicacion {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .panel-opiniones {
+        min-height: 0;
+        padding: 14px;
+    }
+
+    .mapa-ubicacion,
+    .mapa-ubicacion iframe {
+        min-height: 340px;
+    }
+
+    .actividad-equipo {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 20px;
+    }
+
+    .detalles-seminarios {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 26px;
+    }
+
+    .detalle-seminario {
+        padding: 20px;
+    }
+}
