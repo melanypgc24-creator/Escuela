@@ -16,14 +16,14 @@ css/           Estilos del sitio
 js/            Scripts del navegador (validación de formularios y menú lateral de los paneles)
 imagenes/      Imágenes del sitio
 includes/      Componentes compartidos de la página
-conexion.php   Conexión PDO reutilizable
-config/conexion.php Conexión PDO de la aplicación
+config/conexion.php Conexión PDO de la aplicación (única)
 includes/auth_check.php Protección de sesión y roles
+includes/panel_shell.php Barra superior y menú lateral compartidos (administración y secretaría)
 register.php   Registro público como alumno
 api.php        Punto de entrada de la API
 login.php      Inicio de sesión web
 dashboard_admin.php Panel protegido para administrar usuarios y roles
-registrar_pago.php Registro de pagos para administradores
+registrar_pago.php Caja de pagos (efectivo/tarjeta simulada) para recepción y administración
 panel_maestro.php Panel básico de maestro
 panel_alumno.php Panel del alumno (inicio, clases, historial, notificaciones y perfil)
 dashboard.php  Panel protegido
@@ -31,6 +31,12 @@ logout.php     Cierre de sesión
 bootstrap.php  Carga de clases y configuración inicial
 index.php      Página principal del sitio
 ```
+
+## Base de datos: una sola ruta
+
+- Instalación nueva: importa `database/schema.sql` y luego ejecuta `php migrate.php init` y `up` (ver más abajo).
+- Base existente: respalda y ejecuta `php migrate.php up` (guía de actualización más abajo).
+- La conexión PDO vive solo en `config/conexion.php`.
 
 ## Instalación local con XAMPP
 
@@ -41,7 +47,8 @@ index.php      Página principal del sitio
 5. Las vistas de rol están separadas por permisos:
    - `dashboard_admin.php`: gestión de usuarios/roles y eliminación de cuentas.
    - `dashboard_director.php`: indicadores y reportes financieros por periodo.
-   - `panel_recepcionista.php`: operación de caja (pagos) y seguimiento operativo.
+   - `panel_recepcionista.php`: caja integrada para cobrar en **efectivo** (calcula el cambio) o con **tarjeta simulada** (valida formato, Luhn, vencimiento y CVV; no hace ningún cobro real ni guarda el número completo ni el CVV; `4242 4242 4242 4242` se aprueba y una tarjeta que termine en `0002` se rechaza). También muestra alumnos con adeudo y los pagos del día con su folio (`TC-AAAAMMDD-######`).
+   - Cargos: si un alumno no tiene categoría capturada, `MonthlyChargeModel` la deduce de su fecha de nacimiento (menor de 18 = infantil, si no adulta; constante `ADULT_AGE`). Los cargos pendientes con fecha de vencimiento pasada se marcan `vencido` automáticamente al abrir la caja y al generar cargos. Para que existan fechas de vencimiento, configura `dia_vencimiento` en la configuración de mensualidades.
    - `panel_maestro.php`: clases asignadas, alumnos y asistencia reciente.
    - `panel_alumno.php`: perfil, historial de pagos, adeudos, asistencia y notificaciones.
 6. El panel `dashboard_admin.php` solo permite el acceso al rol `administrador`. Desde ahí se listan las cuentas por rol (alumnos, instructores, secretaría, directores y administradores), se crean cuentas de personal, se editan sus datos, se cambia el rol, se activa o desactiva una cuenta, se **restablece la contraseña** de un usuario que la olvidó y se pueden eliminar cuentas. No se puede eliminar ni quitar el rol a tu propia cuenta ni al último administrador activo. Eliminar una cuenta borra solo el acceso: la ficha de alumno o instructor y su historial se conservan. Al eliminar una cuenta **los ID de `usuarios` no se modifican**: los identificadores son estables y pueden quedar huecos en la numeración; ninguna pantalla renumera ni reinicia `AUTO_INCREMENT`. Las sesiones abiertas se validan también por correo. El módulo `registrar_pago.php` también está restringido al administrador y solo permite pagos para alumnos activos.
@@ -138,7 +145,7 @@ Por eso:
 - No todas las migraciones pueden revertirse con `ROLLBACK`.
 - Para DDL, el runner ejecuta en modo no transaccional y se detiene ante errores.
 - Si una migración falla o se interrumpe, queda en estado `failed`/`interrupted` y `up` **no la repite automáticamente**.
-- Solo las migraciones marcadas `retry_safe` (hoy 003 y 005) pueden liberarse con `php migrate.php recover --migration=<id> ...` y repetirse con `up`. Las demás requieren restaurar el respaldo.
+- Solo las migraciones marcadas `retry_safe` (hoy 003, 005, 006, 007, 008 y 009) pueden liberarse con `php migrate.php recover --migration=<id> ...` y repetirse con `up`. Las demás requieren restaurar el respaldo.
 - Usa respaldos y entornos aislados antes de ejecutar migraciones en ambientes compartidos.
 
 ### Claves foráneas y columnas generadas (MariaDB 10.11)
@@ -178,7 +185,7 @@ Esta guía es para quien ya tiene una base con alumnos, profesores, pagos y su c
    php migrate.php up   --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
    ```
 
-6. **Verifica**: `php migrate.php status` debe mostrar las 6 migraciones como `executed`. Puedes ejecutar `up` otra vez: responde `No hay migraciones pendientes`. Inicia sesión con tu cuenta de administrador de siempre; tus IDs (incluido el ID 0 si lo tienes) no cambian.
+6. **Verifica**: `php migrate.php status` debe mostrar las 9 migraciones como `executed`. Puedes ejecutar `up` otra vez: responde `No hay migraciones pendientes`. Inicia sesión con tu cuenta de administrador de siempre; tus IDs no cambian, con una excepción: la migración 007 reubica al profesor con ID 0 a un ID nuevo (y reapunta sus clases y su cuenta), porque 0 es un valor frágil en MySQL/MariaDB. Esa misma migración corrige la cuenta de secretaría de ejemplo: `sevcretaria@localhost.com` pasa a `secretaria@localhost.com` con rol `recepcionista`, y su ficha de alumno queda inactiva.
 
 **Si algo falla:**
 
@@ -201,3 +208,17 @@ Esta guía es para quien ya tiene una base con alumnos, profesores, pagos y su c
 - **Administración de cuentas**: el administrador consulta, edita, cambia el rol y activa/desactiva cuentas. Las cuentas no se eliminan; cambiar de rol conserva el ID, los vínculos y el historial. Una cuenta desactivada no puede iniciar sesión (web ni API) y su sesión abierta deja de ser válida.
 - **Migración `20261120_006_cuentas_y_perfiles`**: agrega `usuarios.activo` y datos personales opcionales (`nombre`, `apellidos`, `telefono`, `fecha_nacimiento`) para el personal sin ficha. Es incremental y repetible. Hasta aplicarla, el panel funciona pero "Activar/Desactivar" queda deshabilitado. Los roles `director` y `recepcionista` requieren la migración 001.
 - **Panel del alumno (`panel_alumno.php?seccion=...`)**: Inicio, Mi perfil, Mis clases, Asistencias, Pagos, Adeudos y Notificaciones. Si una instalación aún no tiene alguna tabla, la sección se muestra vacía con un mensaje amable; los errores reales se registran en el log de PHP/Apache.
+
+## Cargos mensuales y transferencias
+
+Los pagos son **mensuales**, como una suscripción de gimnasio: cada mes se crea un cargo por alumno activo y se cobra en la caja.
+
+- **Cargos (administrador)**: `generar_cargos.php` ("Cargos mensuales" en el menú, y el botón "Generar cargos del mes" del dashboard). Ahí el administrador:
+  - genera los cargos de **todos los alumnos activos** de un periodo, eligiendo la **fecha de vencimiento** al crearlos;
+  - crea un **cargo individual** para un alumno (periodo y vencimiento a elegir);
+  - revisa los cargos de cada periodo (pendientes, vencidos, pagados) y **cambia el vencimiento** de un cargo que aún se debe;
+  - puede marcar "Usar este día del mes como predeterminado" para que el script automático use ese día.
+  Repetir la generación de un periodo es seguro: nunca duplica cargos.
+- **Cargos automáticos cada mes**: `generar_cargos_cli.php --actor=<id_usuario>` (opcional `--periodo=AAAA-MM` y `--vencimiento=AAAA-MM-DD`). En XAMPP/Windows prográmalo con el Programador de tareas (mensual) usando `C:\xampp\php\php.exe C:\xampp\htdocs\Escuela\generar_cargos_cli.php --actor=1`.
+- **Transferencias**: la caja (secretaría en `panel_recepcionista.php` y administración en `registrar_pago.php`) acepta ahora **Efectivo, Transferencia y Tarjeta**. Para transferencias se captura clave de rastreo/referencia, banco de origen y fecha. La referencia no puede repetirse; se guarda en la bitácora (`auditoria_eventos`) y se muestra en las tablas de pagos. No requiere migraciones nuevas.
+- **Panel de secretaría**: usa el mismo diseño (barra superior, menú lateral y tarjetas) que el panel de administración, mediante `includes/panel_shell.php`.

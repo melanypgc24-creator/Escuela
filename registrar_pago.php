@@ -1,20 +1,18 @@
 <?php
 declare(strict_types=1);
 
-use App\Models\PaymentModel;
-
 require __DIR__ . '/includes/auth_check.php';
 require_permission('payments.create');
+require __DIR__ . '/includes/caja_pagos.php';
+require __DIR__ . '/includes/panel_shell.php';
 
 header('Cache-Control: no-store');
 
-$error = null;
+$role = ($_SESSION['rol'] ?? '') === 'recepcionista' ? 'recepcionista' : 'administrador';
 $success = $_SESSION['flash_pago'] ?? null;
 unset($_SESSION['flash_pago']);
 $csrfToken = csrf_token();
-$paymentMethods = ($_SESSION['rol'] ?? null) === 'recepcionista'
-    ? ['Efectivo', 'Tarjeta']
-    : ['Efectivo', 'Transferencia', 'Tarjeta'];
+$paymentMethods = CAJA_METODOS;
 
 try {
     $pdo = require __DIR__ . '/config/conexion.php';
@@ -24,133 +22,108 @@ try {
     exit('No se pudo conectar con la base de datos.');
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $providedToken = $_POST['csrf_token'] ?? '';
-    $studentId = filter_var($_POST['id_alumno'] ?? null, FILTER_VALIDATE_INT);
-    $amount = $_POST['monto'] ?? '';
-    $method = $_POST['metodo_pago'] ?? '';
-    $payerName = $_POST['nombre_pagador'] ?? '';
-
-    if (!is_string($providedToken) || !is_string($csrfToken) || $csrfToken === ''
-        || !hash_equals($csrfToken, $providedToken)) {
-        http_response_code(403);
-        $error = 'La solicitud venció. Recarga la página e inténtalo de nuevo.';
-    } elseif ($studentId === false || $studentId < 0) {
-        $error = 'Selecciona un alumno válido.';
-    } elseif (!is_string($amount) || !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $amount)
-        || (float) $amount <= 0) {
-        $error = 'Escribe un monto mayor que cero, con hasta 8 enteros y 2 decimales.';
-    } elseif (!is_string($method) || !in_array($method, $paymentMethods, true)) {
-        $error = 'Selecciona un método de pago válido.';
-    } elseif (!is_string($payerName) || trim($payerName) === '' || mb_strlen(trim($payerName), 'UTF-8') > 200) {
-        $error = 'Escribe el nombre de quien realiza el pago.';
-    } else {
-        try {
-            $paymentId = (new PaymentModel($pdo))->create([
-                'id_alumno' => $studentId,
-                'monto' => $amount,
-                'fecha_pago' => date('Y-m-d'),
-                'metodo_pago' => strtolower($method),
-                'nombre_pagador' => trim($payerName),
-                'id_alumno_pagador' => null,
-                'id_usuario_registra' => (int) $_SESSION['id_usuario'],
-            ]);
-            $_SESSION['flash_pago'] = 'El pago se registró correctamente. Referencia: ' . $paymentId . '.';
-            header('Location: registrar_pago.php');
-            exit;
-        } catch (\DomainException $exception) {
-            http_response_code(422);
-            $error = $exception->getMessage();
-        } catch (\PDOException $exception) {
-            error_log('Payment registration failed: ' . $exception->getMessage());
-            http_response_code(503);
-            $error = 'No se pudo registrar el pago. Verifica que las migraciones del esquema español estén aplicadas.';
-        } catch (\App\Core\MigrationException $exception) {
-            error_log('Payment registration lock error: ' . $exception->getMessage());
-            http_response_code(503);
-            $error = 'No se pudo registrar el pago en este momento. Inténtalo de nuevo.';
-        } catch (\Throwable $exception) {
-            error_log('Payment registration failed: ' . $exception->getMessage());
-            http_response_code(500);
-            $error = 'No se pudo registrar el pago.';
-        }
-    }
-}
+caja_actualizar_vencidos($pdo);
+$error = caja_procesar_pago($pdo, $paymentMethods, 'registrar_pago.php');
 
 try {
-    $students = $pdo->query(
-        'SELECT id_alumno, nombre, apellidos
-         FROM alumnos
-         WHERE estatus = 1
-         ORDER BY apellidos, nombre'
-    )->fetchAll();
+    $students = caja_alumnos($pdo);
 } catch (\PDOException $exception) {
     error_log('Active students query failed: ' . $exception->getMessage());
     http_response_code(503);
     exit('No se pudo cargar la lista de alumnos.');
 }
 
-$escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+$selectedRaw = $_POST['id_alumno'] ?? $_GET['alumno'] ?? null;
+$selected = filter_var($selectedRaw, FILTER_VALIDATE_INT);
+$selected = $selected === false || $selected < 0 ? null : $selected;
+$charges = $selected !== null ? caja_cargos_alumno($pdo, $selected) : [];
+
+$recentPayments = [];
+try {
+    $recentPayments = $pdo->query(
+        'SELECT p.id_pago, p.folio, p.fecha_pago, p.monto, p.metodo_pago, p.nombre_pagador,
+                CONCAT(a.nombre, " ", a.apellidos) AS alumno
+         FROM pagos p
+         LEFT JOIN alumnos a ON a.id_alumno = p.id_alumno
+         WHERE (p.estado = "activo" OR p.estado IS NULL)
+         ORDER BY p.id_pago DESC
+         LIMIT 15'
+    )->fetchAll();
+} catch (\PDOException $exception) {
+    error_log('Recent payments query failed: ' . $exception->getMessage());
+}
+$references = caja_referencias_pagos($pdo, array_map(static fn (array $row): int => (int) $row['id_pago'], $recentPayments));
+
+tc_shell_open([
+    'title' => 'Cobros y transferencias',
+    'role' => $role,
+    'active' => $role === 'recepcionista' ? 'cobrar' : 'cobros',
+    'csrf' => $csrfToken,
+    'css' => ['css/caja.css'],
+    'breadcrumb' => [['Cobros y transferencias', null]],
+]);
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Registrar pago | Team Cats</title>
-    <link rel="stylesheet" href="css/estilos.css">
-</head>
-<body class="auth-page">
-    <main class="auth-card payment-card">
-        <a class="auth-home-link" href="<?= ($_SESSION['rol'] ?? '') === 'recepcionista' ? 'panel_recepcionista.php' : 'dashboard_admin.php' ?>">Volver al panel</a>
-        <h1>Registrar pago</h1>
-        <p>Registra un pago y aplícalo a los cargos pendientes más antiguos del alumno.</p>
+        <section class="tc-page-head">
+            <div>
+                <span class="tc-eyebrow">CAJA</span>
+                <h1>Cobros y transferencias</h1>
+                <p>Registra pagos en efectivo, por transferencia o con tarjeta (simulada). Se aplican primero al cargo más antiguo del alumno.</p>
+            </div>
+        </section>
 
-        <?php if ($error !== null): ?>
-            <p class="auth-error" role="alert"><?= $escape($error) ?></p>
-        <?php elseif (is_string($success)): ?>
-            <p class="auth-success" role="status"><?= $escape($success) ?></p>
-        <?php endif; ?>
+        <section class="tc-panel" id="caja">
+            <div class="tc-panel-head">
+                <div>
+                    <span class="tc-eyebrow">REGISTRAR PAGO</span>
+                    <h2>Caja</h2>
+                </div>
+            </div>
+            <?php if ($error !== null): ?>
+                <p class="auth-error admin-message" role="alert"><?= tc_e($error) ?></p>
+            <?php elseif (is_string($success)): ?>
+                <p class="auth-success admin-message" role="status"><?= tc_e($success) ?></p>
+            <?php endif; ?>
+            <?php if ($students === []): ?>
+                <div class="tc-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>No hay alumnos activos disponibles para registrar pagos.</span></div>
+            <?php else: ?>
+                <?php caja_render_formulario($students, $paymentMethods, $_POST, $csrfToken, 'registrar_pago.php', $selected, $charges); ?>
+            <?php endif; ?>
+        </section>
 
-        <?php if ($students === []): ?>
-            <p class="auth-error" role="status">No hay alumnos activos disponibles para registrar pagos.</p>
-        <?php else: ?>
-            <form method="post" action="registrar_pago.php">
-                <input type="hidden" name="csrf_token" value="<?= $escape($csrfToken) ?>">
-
-                <label for="id_alumno">Alumno</label>
-                <select id="id_alumno" name="id_alumno" required>
-                    <option value="">Selecciona un alumno</option>
-                    <?php foreach ($students as $student): ?>
-                        <option value="<?= $escape($student['id_alumno']) ?>"
-                            <?= (string) ($_POST['id_alumno'] ?? '') === (string) $student['id_alumno'] ? 'selected' : '' ?>>
-                            <?= $escape($student['nombre'] . ' ' . $student['apellidos']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-
-                <label for="nombre_pagador">Nombre de quien realiza el pago</label>
-                <input id="nombre_pagador" name="nombre_pagador" type="text" maxlength="200" required
-                    value="<?= $escape($_POST['nombre_pagador'] ?? '') ?>">
-
-                <label for="monto">Monto</label>
-                <input id="monto" name="monto" type="number" min="0.01" max="99999999.99" step="0.01" required
-                    value="<?= $escape($_POST['monto'] ?? '') ?>">
-
-                <label for="metodo_pago">Método de pago</label>
-                <select id="metodo_pago" name="metodo_pago" required>
-                    <option value="">Selecciona un método</option>
-                    <?php foreach ($paymentMethods as $paymentMethod): ?>
-                        <option value="<?= $escape($paymentMethod) ?>"
-                            <?= ($_POST['metodo_pago'] ?? '') === $paymentMethod ? 'selected' : '' ?>>
-                            <?= $escape($paymentMethod) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-
-                <button type="submit">Guardar pago</button>
-            </form>
-        <?php endif; ?>
-    </main>
-</body>
-</html>
+        <section class="tc-panel">
+            <div class="tc-panel-head">
+                <div>
+                    <span class="tc-eyebrow">MOVIMIENTOS</span>
+                    <h2>Últimos pagos registrados</h2>
+                </div>
+                <span class="tc-muted">Hasta 15</span>
+            </div>
+            <?php if ($recentPayments === []): ?>
+                <div class="tc-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>Aún no hay pagos registrados.</span></div>
+            <?php else: ?>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>Folio</th><th>Fecha</th><th>Alumno</th><th>Monto</th><th>Método</th><th>Pagador</th></tr></thead>
+                        <tbody>
+                            <?php foreach ($recentPayments as $payment): ?>
+                                <tr>
+                                    <td data-label="Folio"><?= tc_e($payment['folio'] ?? $payment['id_pago']) ?></td>
+                                    <td data-label="Fecha"><?= tc_e(date('d/m/Y', (int) strtotime((string) $payment['fecha_pago']))) ?></td>
+                                    <td data-label="Alumno"><?= tc_e($payment['alumno'] ?? 'Sin alumno') ?></td>
+                                    <td data-label="Monto">$<?= tc_e(caja_money($payment['monto'])) ?></td>
+                                    <td data-label="Método">
+                                        <?= tc_e(ucfirst((string) $payment['metodo_pago'])) ?>
+                                        <?php if (isset($references[(int) $payment['id_pago']])): ?>
+                                            <span class="tc-ref">Ref. <?= tc_e($references[(int) $payment['id_pago']]) ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td data-label="Pagador"><?= tc_e($payment['nombre_pagador'] ?? '') ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </section>
+<?php
+tc_shell_close();

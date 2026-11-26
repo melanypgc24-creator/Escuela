@@ -25,7 +25,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!is_string($nombre) || trim($nombre) === ''
         || !is_string($apellidos) || trim($apellidos) === ''
         || !is_string($telefono) || trim($telefono) === ''
-        || !is_string($fechaNacimiento) || !\App\Core\Request::isValidDate($fechaNacimiento)
+        || !is_string($fechaNacimiento) || !\App\Core\Request::isValidBirthDate($fechaNacimiento)
         || !is_string($fechaIngreso) || !\App\Core\Request::isValidDate($fechaIngreso)
         || ($cinturonId !== null && $cinturonId === false)
         || $estatusValue === false || !in_array($estatusValue, [0, 1], true)) {
@@ -75,7 +75,7 @@ include dirname(__DIR__, 2) . '/includes/header.php';
         <label for="telefono">Teléfono</label>
         <input id="telefono" name="telefono" type="tel" required maxlength="20" value="<?= $escape($input['telefono'] ?? '') ?>">
         <label for="fecha_nacimiento">Fecha de nacimiento</label>
-        <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required value="<?= $escape($input['fecha_nacimiento'] ?? '') ?>">
+        <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required max="<?= date('Y-m-d') ?>" value="<?= $escape($input['fecha_nacimiento'] ?? '') ?>">
         <?php if ($isAdministrator): ?>
             <label for="fecha_ingreso">Fecha de ingreso</label>
             <input id="fecha_ingreso" name="fecha_ingreso" type="date" required value="<?= $escape($input['fecha_ingreso'] ?? date('Y-m-d')) ?>">

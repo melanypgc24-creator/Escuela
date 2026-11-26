@@ -26,7 +26,7 @@ final class DebtModel
         $studentFilter = $studentId === null ? '' : ' AND cm.id_alumno = :id_alumno';
         $statement = $this->db->prepare(
             'SELECT cm.id_cargo, cm.id_alumno, CONCAT(a.nombre, " ", a.apellidos) AS alumno,
-                    cm.periodo, cm.categoria, cm.importe, cm.fecha_vencimiento, cm.estado,
+                    cm.periodo, cm.concepto, cm.categoria, cm.importe, cm.fecha_vencimiento, cm.estado,
                     COALESCE(SUM(ap.importe_aplicado), 0) AS importe_aplicado,
                     cm.importe - COALESCE(SUM(ap.importe_aplicado), 0) AS saldo_pendiente
              FROM cargos_mensuales cm
@@ -39,7 +39,7 @@ final class DebtModel
              WHERE cm.estado IN ("pendiente", "vencido")
              ' . $studentFilter . '
              GROUP BY cm.id_cargo, cm.id_alumno, a.nombre, a.apellidos, cm.periodo,
-                      cm.categoria, cm.importe, cm.fecha_vencimiento, cm.estado
+                      cm.concepto, cm.categoria, cm.importe, cm.fecha_vencimiento, cm.estado
              HAVING saldo_pendiente > 0
              ORDER BY cm.fecha_vencimiento, cm.periodo, cm.id_cargo'
         );

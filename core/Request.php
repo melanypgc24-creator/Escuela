@@ -25,6 +25,12 @@ final class Request
             && $date->format('Y-m-d') === $value;
     }
 
+    /** Fecha de nacimiento: fecha real, no futura y no anterior a 1900. */
+    public static function isValidBirthDate(string $value): bool
+    {
+        return self::isValidDate($value) && $value <= date('Y-m-d') && $value >= '1900-01-01';
+    }
+
     public static function isValidDateTime(string $value): bool
     {
         $date = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value);

@@ -32,6 +32,7 @@ try {
                 c.hora_inicio,
                 c.hora_fin,
                 c.capacidad,
+                c.costo,
                 p.nombre,
                 p.apellidos
          FROM clases c
@@ -104,6 +105,7 @@ $csrfToken = $escape(csrf_token());
                                     <th>Días</th>
                                     <th>Horario</th>
                                     <th>Capacidad</th>
+                                    <th>Costo</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -123,6 +125,7 @@ $csrfToken = $escape(csrf_token());
                                         <td data-label="Días"><?= $escape($clase['dias'] ?? '') ?></td>
                                         <td data-label="Horario"><?= $escape($time($clase['hora_inicio'] ?? '') . ' - ' . $time($clase['hora_fin'] ?? '')) ?></td>
                                         <td data-label="Capacidad"><?= $escape((string) ($clase['capacidad'] ?? 0)) ?></td>
+                                        <td data-label="Costo"><?= (float) ($clase['costo'] ?? 0) > 0 ? '$' . $escape(number_format((float) $clase['costo'], 2)) : 'Mensualidad' ?></td>
                                         <td data-label="Acciones">
                                             <div class="admin-user-actions">
                                                 <a class="admin-save" href="editar_cl.php?id=<?= $escape($idClaseStr) ?>">Editar</a>

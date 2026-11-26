@@ -43,6 +43,7 @@ if (!is_int($professorId)) {
                     // Verifica que la solicitud exista, esté pendiente y pertenezca a una clase del profesor actual
                     $reqStmt = $pdo->prepare(
                         'SELECT ic.id_inscripcion,
+                                ic.id_alumno,
                                 ic.id_clase,
                                 ic.estado,
                                 c.capacidad
@@ -94,8 +95,17 @@ if (!is_int($professorId)) {
                             ]);
 
                             $pdo->commit();
+                            $chargeId = null;
+                            if ($decision === 'aceptada') {
+                                // Al aceptar al alumno se le genera su cargo (costo de la clase o mensualidad).
+                                $chargeId = (new \App\Models\MonthlyChargeModel($pdo))->createOnClassAcceptance(
+                                    (int) $reqRow['id_alumno'],
+                                    (int) $reqRow['id_clase'],
+                                    (int) ($_SESSION['id_usuario'] ?? 0)
+                                );
+                            }
                             $requestSuccess = $decision === 'aceptada'
-                                ? 'Solicitud aceptada. El alumno ya forma parte de la clase.'
+                                ? 'Solicitud aceptada. El alumno ya forma parte de la clase' . ($chargeId !== null ? ' y se le generó su cargo.' : '.')
                                 : 'Solicitud rechazada.';
                         }
                     }

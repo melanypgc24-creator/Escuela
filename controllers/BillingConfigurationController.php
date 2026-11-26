@@ -34,6 +34,6 @@ final class BillingConfigurationController
             }
         }
         $this->configuration->setDueDay($day, (int) $_SESSION['id_usuario']);
-        JsonResponse::send(['message' => 'Configuración guardada. La generación de cargos permanece deshabilitada hasta definir las reglas de vencimiento y prorrateo.']);
+        JsonResponse::send(['message' => 'Configuración guardada. Este será el día de vencimiento predeterminado de los cargos mensuales.']);
     }
 }

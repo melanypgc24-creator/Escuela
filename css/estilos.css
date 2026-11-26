@@ -2189,3 +2189,240 @@ body.tc-body:not(.tc-collapsed) .tc-sidebar {
   color: #20242b;
   font-size: 14px;
 }
+
+
+/* ------------------------------------------------------------------
+   Cargos mensuales, caja y transferencias (administración y secretaría)
+   ------------------------------------------------------------------ */
+.tc-body .caja-form {
+  padding: 0;
+}
+
+.tc-body .caja-field label,
+.tc-body .caja-metodos legend {
+  color: #20252d;
+}
+
+.tc-body .caja-field input:focus,
+.tc-body .caja-field select:focus {
+  border-color: var(--tc-lime-deep);
+  outline: 2px solid var(--tc-lime);
+}
+
+.tc-body .caja-radio:has(input:checked) {
+  border-color: var(--tc-lime-deep);
+  background: var(--tc-lime-soft);
+}
+
+.tc-body .caja-submit {
+  border-radius: 8px;
+  background: var(--tc-dark);
+}
+
+.tc-body .caja-submit:hover {
+  background: #363d4b;
+}
+
+.tc-body .caja-link {
+  color: var(--tc-lime-deep);
+}
+
+.tc-body .caja-nota {
+  margin-bottom: 12px;
+}
+
+.tc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.tc-form-grid .tc-wide {
+  grid-column: 1 / -1;
+}
+
+.tc-field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.tc-field label {
+  color: #20252d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tc-field input,
+.tc-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+}
+
+.tc-field input:focus,
+.tc-field select:focus {
+  border-color: var(--tc-lime-deep);
+  outline: 2px solid var(--tc-lime);
+}
+
+.tc-field-hint {
+  color: var(--tc-muted);
+  font-size: 13px;
+}
+
+.tc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tc-check input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+}
+
+.tc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--tc-dark);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.tc-btn:hover {
+  background: #363d4b;
+}
+
+.tc-btn i {
+  color: var(--tc-lime);
+}
+
+.tc-btn-small {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.tc-btn-ghost {
+  border: 1px solid #d9dbd2;
+  background: #fff;
+  color: #2b2f38;
+}
+
+.tc-btn-ghost:hover {
+  background: var(--tc-lime-soft);
+}
+
+.tc-btn-ghost i {
+  color: var(--tc-lime-deep);
+}
+
+.tc-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tc-badge-pendiente { background: #fff4d6; color: #7a5600; }
+.tc-badge-vencido { background: #fdecea; color: #a12622; }
+.tc-badge-pagado { background: #e3f4ea; color: #195b35; }
+.tc-badge-transferencia { background: #e8eefb; color: #254a8f; }
+
+.tc-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e6e9b3;
+  border-radius: 10px;
+  background: #fafbe9;
+}
+
+.tc-banner strong {
+  display: block;
+  color: #3f4608;
+}
+
+.tc-banner small {
+  color: var(--tc-muted);
+  font-size: 13px;
+}
+
+.tc-inline-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.tc-inline-form input[type="date"] {
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.tc-toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.tc-toolbar .tc-field {
+  min-width: 180px;
+}
+
+.tc-table-note {
+  margin-top: 10px;
+  color: var(--tc-muted);
+  font-size: 13px;
+}
+
+.tc-body .admin-table td .tc-ref {
+  display: block;
+  margin-top: 2px;
+  color: var(--tc-muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .tc-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tc-welcome-side {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}

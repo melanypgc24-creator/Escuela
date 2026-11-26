@@ -165,7 +165,7 @@ final class StudentController
             || (is_string($correo) && mb_strlen(trim($correo), 'UTF-8') > 150)
             || ($direccion !== null && !is_string($direccion))
             || (is_string($direccion) && mb_strlen(trim($direccion), 'UTF-8') > 255)
-            || !is_string($fechaNacimiento) || !Request::isValidDate($fechaNacimiento)
+            || !is_string($fechaNacimiento) || !Request::isValidBirthDate($fechaNacimiento)
             || $estatus === null
             || ($categoria !== null && !in_array($categoria, ['infantil', 'adulta'], true))
             || ($idCinturon !== null && ($idCinturon === false || $idCinturon < 0))) {

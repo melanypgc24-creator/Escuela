@@ -46,9 +46,25 @@ final class PaymentModel
         return $statement->fetchAll();
     }
 
+    /**
+     * Unifica los valores históricos de la API (cash/card/transfer) con los que usa
+     * la interfaz web, para que los reportes agrupen igual sin importar el origen.
+     */
+    private static function normalizeMethod(string $method): string
+    {
+        $method = strtolower(trim($method));
+        return match ($method) {
+            'cash' => 'efectivo',
+            'card' => 'tarjeta',
+            'transfer' => 'transferencia',
+            default => $method,
+        };
+    }
+
     public function create(array $data): int
     {
         $studentId = (int) $data['id_alumno'];
+        $data['metodo_pago'] = self::normalizeMethod((string) $data['metodo_pago']);
         return DatabaseLock::run(
             $this->db,
             'escuela:pago:alumno:' . $studentId,
@@ -114,6 +130,17 @@ final class PaymentModel
                         throw new DomainException('La base de datos no devolvió un identificador de pago válido.');
                     }
 
+                    // Folio legible y único derivado del ID (la columna folio ya existía pero nunca se llenaba).
+                    $folio = sprintf(
+                        'TC-%s-%06d',
+                        date('Ymd', (int) strtotime((string) $data['fecha_pago'])),
+                        $paymentId
+                    );
+                    $setFolio = $this->db->prepare(
+                        'UPDATE pagos SET folio = :folio WHERE id_pago = :id_pago AND folio IS NULL'
+                    );
+                    $setFolio->execute(['folio' => $folio, 'id_pago' => $paymentId]);
+
                     $apply = $this->db->prepare(
                         'INSERT INTO aplicaciones_pagos
                             (id_pago, id_cargo, id_alumno, importe_aplicado)
@@ -157,7 +184,8 @@ final class PaymentModel
                         'registrar',
                         'pagos',
                         $paymentId,
-                        ['id_alumno' => $studentId]
+                        ['id_alumno' => $studentId, 'metodo_pago' => $data['metodo_pago'], 'folio' => $folio]
+                        + (is_array($data['detalles_auditoria'] ?? null) ? $data['detalles_auditoria'] : [])
                     );
 
                     $this->db->commit();

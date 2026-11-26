@@ -42,7 +42,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = 'Escribe tu nombre y apellidos (máximo 100 caracteres cada uno).';
         } elseif (!is_string($phone) || trim($phone) === '' || mb_strlen(trim($phone), 'UTF-8') > 20) {
             $error = 'Escribe un teléfono válido de máximo 20 caracteres.';
-        } elseif (!is_string($birthDate) || !\App\Core\Request::isValidDate($birthDate)) {
+        } elseif (!is_string($birthDate) || !\App\Core\Request::isValidBirthDate($birthDate)) {
             $error = 'Selecciona una fecha de nacimiento válida.';
         } elseif (!is_string($email) || !filter_var(trim($email), FILTER_VALIDATE_EMAIL)
             || strlen(trim($email)) > 100) {
@@ -56,7 +56,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } else {
             $registeredUserId = null;
             try {
-                $pdo = require __DIR__ . '/conexion.php';
+                $pdo = require __DIR__ . '/config/conexion.php';
                 $email = trim($email);
                 $firstName = trim($firstName);
                 $lastName = trim($lastName);
@@ -295,7 +295,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     value="<?= htmlspecialchars((string) ($_POST['telefono'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
                 <label for="fecha_nacimiento">Fecha de nacimiento</label>
-                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required
+                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required max="<?= date('Y-m-d') ?>"
                     value="<?= htmlspecialchars((string) ($_POST['fecha_nacimiento'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
                 <label for="correo">Correo electrónico</label>

@@ -255,7 +255,12 @@ $groupOpen = $sectionRole !== null;
             </li>
             <li>
                 <a class="tc-link" href="registrar_pago.php">
-                    <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>Cobros
+                    <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>Cobros y transferencias
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="generar_cargos.php">
+                    <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Cargos mensuales
                 </a>
             </li>
         </ul>
@@ -285,7 +290,10 @@ $groupOpen = $sectionRole !== null;
                     <h1>Bienvenido, <?= $escape($adminName) ?></h1>
                     <p>Consulta el estado general de las cuentas y da seguimiento a las actividades de la escuela.</p>
                 </div>
-                <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+                <div class="tc-welcome-side">
+                    <a class="tc-btn" href="generar_cargos.php#lote"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Generar cargos del mes</a>
+                    <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+                </div>
             </section>
 
             <section class="tc-metrics" aria-label="Resumen de cuentas">
@@ -346,6 +354,8 @@ $groupOpen = $sectionRole !== null;
                         <a href="dashboard_admin.php?seccion=secretaria"><i class="fa-solid fa-headset" aria-hidden="true"></i><span>Crear secretaría</span></a>
                         <a href="dashboard_admin.php?seccion=alumnos"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Consultar alumnos</span></a>
                         <a href="registrar_pago.php"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i><span>Registrar pago</span></a>
+                        <a href="registrar_pago.php?metodo=Transferencia#caja"><i class="fa-solid fa-building-columns" aria-hidden="true"></i><span>Registrar transferencia</span></a>
+                        <a href="generar_cargos.php#lote"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>Generar cargos</span></a>
                     </div>
                 </div>
             </section>

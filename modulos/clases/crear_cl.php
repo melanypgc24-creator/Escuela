@@ -28,6 +28,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $finHm    = $finValida ? ($mFin[1] . ':' . $mFin[2]) : '';
 
     $capacidad = filter_var($input['capacidad'] ?? null, FILTER_VALIDATE_INT);
+    $costoRaw = str_replace([',', '$', ' '], '', trim((string) ($input['costo'] ?? '')));
+    $costo = $costoRaw === '' ? false : filter_var($costoRaw, FILTER_VALIDATE_FLOAT);
 
     if (
         $nombreClase === '' || mb_strlen($nombreClase, 'UTF-8') > 100
@@ -36,8 +38,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         || !$inicioValida
         || !$finValida || $finHm <= $inicioHm
         || $capacidad === false || $capacidad === null || $capacidad < 1
+        || $costo === false || $costo < 0 || $costo > 99999999
     ) {
-        $error = 'Revisa el nombre, profesor, días, horario y capacidad de la clase.';
+        $error = 'Revisa el nombre, profesor, días, horario, capacidad y costo de la clase.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -53,8 +56,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $nextId = (int) $pdo->query('SELECT COALESCE(MAX(id_clase), 0) + 1 FROM clases')->fetchColumn();
 
             $stmt = $pdo->prepare(
-                'INSERT INTO clases (id_clase, nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad)
-                 VALUES (:id_clase, :nombre_clase, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad)'
+                'INSERT INTO clases (id_clase, nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad, costo)
+                 VALUES (:id_clase, :nombre_clase, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad, :costo)'
             );
             $stmt->execute([
                 'id_clase'     => $nextId,
@@ -64,6 +67,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'hora_inicio'  => $inicioHm,
                 'hora_fin'     => $finHm,
                 'capacidad'    => $capacidad,
+                'costo'        => number_format((float) $costo, 2, '.', ''),
             ]);
 
             try {
@@ -121,7 +125,7 @@ $csrfToken = $escape(csrf_token());
         <div>
             <span class="admin-eyebrow">TEAM CATS · CLASES</span>
             <h1>Crear clase</h1>
-            <p>Registra una nueva clase, asigna instructor, horario y capacidad.</p>
+            <p>Registra una nueva clase, asigna instructor, horario, capacidad y costo.</p>
         </div>
         <div class="admin-account">
             <span><?= $escape($_SESSION['correo'] ?? '') ?></span>
@@ -170,6 +174,9 @@ $csrfToken = $escape(csrf_token());
 
                     <label for="capacidad">Capacidad</label>
                     <input id="capacidad" name="capacidad" type="number" min="1" required value="<?= $escape($input['capacidad'] ?? 20) ?>">
+
+                    <label for="costo">Costo de la clase</label>
+                    <input id="costo" name="costo" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="Ej. 250 (0 = se cobra la mensualidad)" value="<?= $escape($input['costo'] ?? '') ?>">
 
                     <div class="role-dashboard-actions">
                         <button type="submit" class="admin-save">Guardar clase</button>

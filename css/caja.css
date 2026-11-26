@@ -1,0 +1,31 @@
+/* Caja de pagos (panel de recepción y registrar_pago.php) */
+.caja-form { padding: 18px 20px; }
+.caja-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.caja-wide { grid-column: 1 / -1; }
+.caja-field { display: grid; gap: 6px; align-content: start; }
+.caja-field label, .caja-metodos legend { font-weight: 700; font-size: 14px; color: #20242b; }
+.caja-field input, .caja-field select {
+  width: 100%; min-height: 42px; padding: 8px 10px; box-sizing: border-box;
+  border: 1px solid #c9ced6; border-radius: 6px; background: #fff; font: inherit;
+}
+.caja-field input:focus, .caja-field select:focus { outline: 2px solid #d3dd3e; border-color: #7d8810; }
+.caja-hint { margin: 0; font-size: 13px; color: #626a76; }
+.caja-cargos { padding: 12px 14px; border: 1px solid #e3e6eb; border-radius: 8px; background: #fafaf6; }
+.caja-cargos ul { margin: 8px 0; padding-left: 18px; }
+.caja-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.caja-badge-warn { background: #fdecea; color: #a12622; }
+.caja-metodos { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.caja-metodos legend { padding: 0; margin-bottom: 8px; }
+.caja-radio { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border: 1px solid #c9ced6; border-radius: 8px; cursor: pointer; font-weight: 700; }
+.caja-radio:has(input:checked) { border-color: #7d8810; background: #f3f5d3; }
+.caja-panel { padding: 14px; border: 1px dashed #c9ced6; border-radius: 8px; }
+.caja-panel[hidden] { display: none; }
+.caja-cambio { display: flex; align-items: center; min-height: 42px; font-size: 22px; font-weight: 800; color: #195b35; }
+.caja-sim { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fff7e0; border: 1px solid #e6c96a; color: #6a5200; font-size: 13px; }
+.caja-submit {
+  margin-top: 18px; min-height: 46px; padding: 10px 22px; border: 0; border-radius: 6px;
+  background: #29364a; color: #fff; font: inherit; font-weight: 800; cursor: pointer;
+}
+.caja-submit:hover { background: #3a4b64; }
+.caja-link { color: #29364a; font-weight: 700; }
+@media (max-width: 640px) { .caja-grid { grid-template-columns: 1fr; } }

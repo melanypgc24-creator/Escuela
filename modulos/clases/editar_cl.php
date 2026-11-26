@@ -22,7 +22,7 @@ $claseActual = null;
 
 try {
     $stmtClase = $conexion->prepare(
-        'SELECT id_clase, nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad
+        'SELECT id_clase, nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad, costo
          FROM clases
          WHERE id_clase = :id_clase
          LIMIT 1'
@@ -62,6 +62,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && is_array($claseActual)) 
     $finHm = $finValida ? ($mFin[1] . ':' . $mFin[2]) : '';
 
     $capacidad = filter_var($input['capacidad'] ?? null, FILTER_VALIDATE_INT);
+    $costoRaw = str_replace([',', '$', ' '], '', trim((string) ($input['costo'] ?? '')));
+    $costo = $costoRaw === '' ? false : filter_var($costoRaw, FILTER_VALIDATE_FLOAT);
 
     if (
         $nombreClase === '' || mb_strlen($nombreClase, 'UTF-8') > 100
@@ -70,8 +72,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && is_array($claseActual)) 
         || !$inicioValida
         || !$finValida || $finHm <= $inicioHm
         || $capacidad === false || $capacidad === null || $capacidad < 1
+        || $costo === false || $costo < 0 || $costo > 99999999
     ) {
-        $error = 'Revisa el nombre, profesor, días, horario y capacidad de la clase.';
+        $error = 'Revisa el nombre, profesor, días, horario, capacidad y costo de la clase.';
     } else {
         try {
             $conexion->beginTransaction();
@@ -89,7 +92,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && is_array($claseActual)) 
                      dias = :dias,
                      hora_inicio = :hora_inicio,
                      hora_fin = :hora_fin,
-                     capacidad = :capacidad
+                     capacidad = :capacidad,
+                     costo = :costo
                  WHERE id_clase = :id_clase'
             );
             $update->execute([
@@ -99,6 +103,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && is_array($claseActual)) 
                 'hora_inicio'  => $inicioHm,
                 'hora_fin'     => $finHm,
                 'capacidad'    => $capacidad,
+                'costo'        => number_format((float) $costo, 2, '.', ''),
                 'id_clase'     => $idClase,
             ]);
 
@@ -217,6 +222,9 @@ $csrfToken = $escape(csrf_token());
 
                     <label for="capacidad">Capacidad</label>
                     <input id="capacidad" name="capacidad" type="number" min="1" required value="<?= $escape((string) ($input['capacidad'] ?? 20)) ?>">
+
+                    <label for="costo">Costo de la clase</label>
+                    <input id="costo" name="costo" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="Ej. 250 (0 = se cobra la mensualidad)" value="<?= $escape((string) ($input['costo'] ?? '0')) ?>">
 
                     <div class="role-dashboard-actions">
                         <button type="submit" class="admin-save">Guardar cambios</button>

@@ -154,6 +154,8 @@ final class StudentModel
             }
             $this->audit->record($actorUserId, 'crear', 'alumnos', $id, ['matricula' => $matricula]);
             $this->db->commit();
+            // El primer cargo se genera el día de la inscripción (fuera de la transacción: no debe romperla).
+            (new MonthlyChargeModel($this->db))->createOnEnrollment($id, $actorUserId);
             return $id;
         } catch (\Throwable $exception) {
             if ($this->db->inTransaction()) {
