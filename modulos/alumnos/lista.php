@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
 require_permission('students.read');
-require_once dirname(__DIR__, 2) . '/config/database.php';
+$pdo = require dirname(__DIR__, 2) . '/config/conexion.php';
+$conexion = $pdo;
 
 $sql = 'SELECT a.id_alumno, a.matricula, a.nombre, a.apellidos, a.fecha_nacimiento,
                a.telefono, a.fecha_ingreso, a.estatus, c.color AS cinturon

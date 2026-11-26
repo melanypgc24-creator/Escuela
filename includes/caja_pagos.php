@@ -4,16 +4,19 @@ declare(strict_types=1);
 /**
  * Caja de pagos compartida por el panel de recepción y registrar_pago.php.
  *
- * - Efectivo: se captura el efectivo recibido y se calcula el cambio.
- * - Tarjeta: es una SIMULACIÓN. Se valida el formato (Luhn, vencimiento, CVV) y se
- *   genera una autorización falsa; no se contacta a ningún procesador de pagos y
- *   nunca se guarda el número completo ni el CVV (solo los últimos 4 dígitos y el
- *   código simulado quedan en la auditoría).
+ * Las reglas del pago (monto, fecha de hoy, nombre del pagador, tarjeta simulada y transferencia) viven en
+ * App\Models\PaymentModel::create(), el mismo camino que usa la API. Esta caja solo recoge el formulario,
+ * aplica lo que es propio de la pantalla y muestra el resultado:
+ *
+ * - Efectivo: se captura el efectivo recibido y se calcula el cambio (esto es solo de la pantalla).
+ * - Tarjeta: es una SIMULACIÓN. El modelo valida el formato (Luhn, vencimiento, CVV) y genera una
+ *   autorización falsa; no se contacta a ningún procesador de pagos y nunca se guarda el número completo
+ *   ni el CVV (solo los últimos 4 dígitos y el código simulado quedan en la auditoría).
  *   Tarjeta de prueba aprobada: 4242 4242 4242 4242. Termina en 0002 = rechazo simulado.
- * - Transferencia: el pago ya se hizo en el banco; aquí se captura la clave de rastreo o
- *   referencia (obligatoria y única), el banco de origen y la fecha de la transferencia.
- *   Esos datos quedan en la bitácora (auditoria_eventos) sin cambiar el esquema de la base,
- *   y una misma referencia no se puede registrar dos veces.
+ * - Transferencia: el pago ya se hizo en el banco; se captura la clave de rastreo o referencia
+ *   (obligatoria y única), el banco de origen y la fecha de la transferencia. El modelo deja esos datos en
+ *   la bitácora (auditoria_eventos) sin cambiar el esquema de la base, y una misma referencia no se puede
+ *   registrar dos veces.
  */
 
 use App\Models\DebtModel;
@@ -49,62 +52,6 @@ function caja_money(mixed $value): string
 /** Métodos de pago que puede registrar cualquier usuario de la caja (recepción y administración). */
 const CAJA_METODOS = ['Efectivo', 'Transferencia', 'Tarjeta'];
 
-/** Referencia de transferencia normalizada: solo letras y números, en mayúsculas. */
-function caja_normalizar_referencia(string $reference): string
-{
-    return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $reference) ?? '');
-}
-
-/**
- * Valida los datos de una transferencia bancaria.
- *
- * @return array{error: ?string, referencia: ?string, banco: ?string, fecha: ?string}
- */
-function caja_validar_transferencia(PDO $pdo, array $input): array
-{
-    $fail = static fn (string $message): array => ['error' => $message, 'referencia' => null, 'banco' => null, 'fecha' => null];
-
-    $reference = $input['transferencia_referencia'] ?? '';
-    $bank = $input['transferencia_banco'] ?? '';
-    $date = $input['transferencia_fecha'] ?? '';
-    if (!is_string($reference) || !is_string($bank) || !is_string($date)) {
-        return $fail('Completa los datos de la transferencia.');
-    }
-
-    $normalized = caja_normalizar_referencia($reference);
-    if (strlen($normalized) < 6 || strlen($normalized) > 40) {
-        return $fail('Escribe la clave de rastreo o referencia de la transferencia (de 6 a 40 letras o números).');
-    }
-    $bank = trim($bank);
-    if ($bank === '' || mb_strlen($bank, 'UTF-8') > 80) {
-        return $fail('Escribe el banco desde el que se hizo la transferencia.');
-    }
-    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', trim($date));
-    if ($parsed === false || $parsed->format('Y-m-d') !== trim($date)) {
-        return $fail('Escribe la fecha en que se hizo la transferencia.');
-    }
-    $today = new DateTimeImmutable('today');
-    if ($parsed > $today) {
-        return $fail('La fecha de la transferencia no puede ser futura.');
-    }
-    if ($parsed < $today->modify('-90 days')) {
-        return $fail('La transferencia tiene más de 90 días; confirma la fecha con el comprobante.');
-    }
-
-    // La referencia solo contiene A-Z y 0-9, por lo que es seguro buscarla con LIKE dentro del JSON de la bitácora.
-    $duplicate = $pdo->prepare(
-        "SELECT COUNT(*) FROM auditoria_eventos
-         WHERE entidad = 'pagos' AND accion = 'registrar'
-           AND detalles LIKE :patron"
-    );
-    $duplicate->execute(['patron' => '%"transferencia_referencia":"' . $normalized . '"%']);
-    if ((int) $duplicate->fetchColumn() > 0) {
-        return $fail('Esa referencia de transferencia ya fue registrada en otro pago.');
-    }
-
-    return ['error' => null, 'referencia' => $normalized, 'banco' => $bank, 'fecha' => $parsed->format('Y-m-d')];
-}
-
 /**
  * Referencias de transferencia de varios pagos, indexadas por id_pago (para mostrarlas en tablas).
  *
@@ -138,70 +85,6 @@ function caja_referencias_pagos(PDO $pdo, array $paymentIds): array
     }
 }
 
-/** Algoritmo de Luhn sobre una cadena de dígitos. */
-function caja_luhn_ok(string $digits): bool
-{
-    if ($digits === '' || !ctype_digit($digits)) {
-        return false;
-    }
-    $sum = 0;
-    $double = false;
-    for ($i = strlen($digits) - 1; $i >= 0; $i--) {
-        $n = (int) $digits[$i];
-        if ($double) {
-            $n *= 2;
-            if ($n > 9) {
-                $n -= 9;
-            }
-        }
-        $sum += $n;
-        $double = !$double;
-    }
-    return $sum % 10 === 0;
-}
-
-/**
- * Valida y "autoriza" una tarjeta simulada.
- *
- * @return array{error: ?string, last4: ?string, auth: ?string}
- */
-function caja_simular_tarjeta(array $input): array
-{
-    $fail = static fn (string $message): array => ['error' => $message, 'last4' => null, 'auth' => null];
-
-    $holder = $input['tarjeta_titular'] ?? '';
-    $number = $input['tarjeta_numero'] ?? '';
-    $expiry = $input['tarjeta_vencimiento'] ?? '';
-    $cvv = $input['tarjeta_cvv'] ?? '';
-    if (!is_string($holder) || !is_string($number) || !is_string($expiry) || !is_string($cvv)) {
-        return $fail('Completa los datos de la tarjeta.');
-    }
-    if (trim($holder) === '' || mb_strlen(trim($holder), 'UTF-8') > 80) {
-        return $fail('Escribe el nombre del titular de la tarjeta.');
-    }
-    $digits = preg_replace('/[\s-]/', '', $number) ?? '';
-    if (preg_match('/^\d{13,19}$/D', $digits) !== 1 || !caja_luhn_ok($digits)) {
-        return $fail('El número de tarjeta no es válido.');
-    }
-    if (preg_match('/^(0[1-9]|1[0-2])\s*\/\s*(\d{2})$/D', trim($expiry), $m) !== 1) {
-        return $fail('El vencimiento debe tener formato MM/AA.');
-    }
-    $lastDay = new DateTimeImmutable(sprintf('20%s-%s-01', $m[2], $m[1]));
-    $lastDay = $lastDay->modify('last day of this month')->setTime(23, 59, 59);
-    if ($lastDay < new DateTimeImmutable('now')) {
-        return $fail('La tarjeta está vencida.');
-    }
-    if (preg_match('/^\d{3,4}$/D', trim($cvv)) !== 1) {
-        return $fail('El CVV debe tener 3 o 4 dígitos.');
-    }
-
-    $last4 = substr($digits, -4);
-    if ($last4 === '0002') {
-        return $fail('Tarjeta rechazada por el banco (simulación). Prueba con otra tarjeta.');
-    }
-    return ['error' => null, 'last4' => $last4, 'auth' => 'SIM-' . strtoupper(bin2hex(random_bytes(3)))];
-}
-
 /**
  * Procesa el POST del formulario de caja. En éxito guarda un mensaje en
  * $_SESSION['flash_pago'] y redirige a $redirectTo (PRG). En error devuelve el mensaje.
@@ -224,27 +107,23 @@ function caja_procesar_pago(PDO $pdo, array $allowedMethods, string $redirectTo)
     $studentId = filter_var($_POST['id_alumno'] ?? null, FILTER_VALIDATE_INT);
     $amount = $_POST['monto'] ?? '';
     $method = $_POST['metodo_pago'] ?? '';
-    $payerName = $_POST['nombre_pagador'] ?? '';
 
     if ($studentId === false || $studentId < 0) {
         return 'Selecciona un alumno válido.';
     }
-    if (!is_string($amount) || preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $amount) !== 1 || (float) $amount <= 0) {
-        return 'Escribe un monto mayor que cero, con hasta 8 enteros y 2 decimales.';
-    }
     if (!is_string($method) || !in_array($method, $allowedMethods, true)) {
         return 'Selecciona un método de pago válido.';
     }
-    if (!is_string($payerName) || trim($payerName) === '' || mb_strlen(trim($payerName), 'UTF-8') > 200) {
-        return 'Escribe el nombre de quien realiza el pago.';
-    }
 
+    // Lo único propio de la pantalla es el efectivo recibido y el cambio. El resto de las reglas
+    // (monto, fecha, nombre del pagador, tarjeta, transferencia) las valida PaymentModel::create().
     $audit = [];
     $change = null;
-    $cardNote = null;
-    $amountCents = (int) round(((float) $amount) * 100);
-
     if ($method === 'Efectivo') {
+        if (!is_string($amount) || preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $amount) !== 1 || (float) $amount <= 0) {
+            return 'Escribe un monto mayor que cero, con hasta 8 enteros y 2 decimales.';
+        }
+        $amountCents = (int) round(((float) $amount) * 100);
         $received = $_POST['efectivo_recibido'] ?? '';
         if (!is_string($received) || preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', $received) !== 1) {
             return 'Escribe cuánto efectivo se recibió.';
@@ -255,37 +134,19 @@ function caja_procesar_pago(PDO $pdo, array $allowedMethods, string $redirectTo)
         }
         $change = $receivedCents - $amountCents;
         $audit = ['efectivo_recibido' => caja_money($receivedCents / 100), 'cambio' => caja_money($change / 100)];
-    } elseif ($method === 'Transferencia') {
-        $transfer = caja_validar_transferencia($pdo, $_POST);
-        if ($transfer['error'] !== null) {
-            return $transfer['error'];
-        }
-        $audit = [
-            'transferencia_referencia' => $transfer['referencia'],
-            'transferencia_banco' => $transfer['banco'],
-            'transferencia_fecha' => $transfer['fecha'],
-        ];
-        $cardNote = sprintf('Transferencia %s · %s · %s.', $transfer['referencia'], $transfer['banco'], date('d/m/Y', (int) strtotime((string) $transfer['fecha'])));
-    } elseif ($method === 'Tarjeta') {
-        $card = caja_simular_tarjeta($_POST);
-        if ($card['error'] !== null) {
-            return $card['error'];
-        }
-        $audit = ['tarjeta_simulada' => true, 'tarjeta_ultimos4' => $card['last4'], 'autorizacion_simulada' => $card['auth']];
-        $cardNote = sprintf('Tarjeta **** %s · autorización simulada %s.', $card['last4'], $card['auth']);
     }
 
+    $payments = new PaymentModel($pdo);
     try {
-        $paymentId = (new PaymentModel($pdo))->create([
+        $paymentId = $payments->create([
             'id_alumno' => $studentId,
             'monto' => $amount,
-            'fecha_pago' => date('Y-m-d'),
             'metodo_pago' => strtolower($method),
-            'nombre_pagador' => trim($payerName),
+            'nombre_pagador' => $_POST['nombre_pagador'] ?? '',
             'id_alumno_pagador' => null,
             'id_usuario_registra' => (int) $_SESSION['id_usuario'],
             'detalles_auditoria' => $audit,
-        ]);
+        ] + array_intersect_key($_POST, array_flip(PaymentModel::METHOD_FIELDS)));
     } catch (\DomainException $exception) {
         http_response_code(422);
         return $exception->getMessage();
@@ -301,6 +162,29 @@ function caja_procesar_pago(PDO $pdo, array $allowedMethods, string $redirectTo)
         error_log('Payment registration failed: ' . $exception->getMessage());
         http_response_code(500);
         return 'No se pudo registrar el pago.';
+    }
+
+    // Nota para el mensaje de confirmación, a partir de lo que el modelo dejó en la bitácora.
+    $cardNote = null;
+    try {
+        $details = $payments->registrationDetails($paymentId);
+    } catch (\Throwable $exception) {
+        error_log('No se pudieron leer los detalles del pago: ' . $exception->getMessage());
+        $details = [];
+    }
+    if (isset($details['transferencia_referencia'])) {
+        $cardNote = sprintf(
+            'Transferencia %s · %s · %s.',
+            (string) $details['transferencia_referencia'],
+            (string) ($details['transferencia_banco'] ?? ''),
+            date('d/m/Y', (int) strtotime((string) ($details['transferencia_fecha'] ?? '')))
+        );
+    } elseif (isset($details['tarjeta_ultimos4'])) {
+        $cardNote = sprintf(
+            'Tarjeta **** %s · autorización simulada %s.',
+            (string) $details['tarjeta_ultimos4'],
+            (string) ($details['autorizacion_simulada'] ?? '')
+        );
     }
 
     $folioQuery = $pdo->prepare('SELECT folio FROM pagos WHERE id_pago = :id');

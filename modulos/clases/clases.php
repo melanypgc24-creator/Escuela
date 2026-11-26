@@ -15,6 +15,8 @@ if (isset($_GET['eliminada']) && $_GET['eliminada'] === '1') {
 } elseif (isset($_GET['error'])) {
     $error = match ((string) $_GET['error']) {
         'tiene_asistencias' => 'No se puede eliminar la clase porque ya tiene asistencias registradas.',
+        'tiene_inscripciones' => 'No se puede eliminar la clase porque tiene alumnos inscritos o solicitudes de inscripción.',
+        'tiene_relaciones'  => 'No se puede eliminar la clase porque tiene registros relacionados.',
         'no_encontrada'     => 'La clase seleccionada no existe o ya fue eliminada.',
         'id_invalido'       => 'El identificador de la clase no es válido.',
         default             => 'No se pudo eliminar la clase.',

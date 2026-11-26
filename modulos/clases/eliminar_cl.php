@@ -43,6 +43,16 @@ try {
         exit;
     }
 
+    $insStmt = $conexion->prepare(
+        'SELECT (SELECT COUNT(*) FROM inscripciones_clases WHERE id_clase = :a) + (SELECT COUNT(*) FROM clases_alumnos WHERE id_clase = :b)'
+    );
+    $insStmt->execute(['a' => $idClase, 'b' => $idClase]);
+    if ((int) $insStmt->fetchColumn() > 0) {
+        $conexion->rollBack();
+        header('Location: clases.php?error=tiene_inscripciones');
+        exit;
+    }
+
     $deleteStmt = $conexion->prepare('DELETE FROM clases WHERE id_clase = :id_clase');
     $deleteStmt->execute(['id_clase' => $idClase]);
 
@@ -69,7 +79,7 @@ try {
     }
     error_log('Error SQL al eliminar clase: ' . $exception->getMessage());
     if ((string) ($exception->errorInfo[1] ?? '') === '1451') {
-        header('Location: clases.php?error=tiene_asistencias');
+        header('Location: clases.php?error=tiene_relaciones');
         exit;
     }
     header('Location: clases.php?error=eliminar');

@@ -76,6 +76,10 @@ final class AttendanceController
         } catch (DomainException $exception) {
             JsonResponse::send(['error' => $exception->getMessage()], 403);
         } catch (PDOException $exception) {
+            if ((int) ($exception->errorInfo[1] ?? 0) === 1452) {
+                JsonResponse::send(['error' => 'El alumno o la clase indicados no existen.'], 422);
+                return;
+            }
             if ($exception->getCode() === '23000') {
                 JsonResponse::send(['error' => 'La asistencia ya existe o referencia una relación no válida.'], 409);
                 return;

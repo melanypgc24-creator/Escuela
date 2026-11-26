@@ -3,7 +3,7 @@
 -- =====================================================================
 --
 -- Este archivo crea la base de datos completa tal como queda DESPUÉS de
--- aplicar las migraciones 20261118_001 ... 20261126_009. Úsalo solo
+-- aplicar las migraciones 20261118_001 ... 20261126_010. Úsalo solo
 -- para una instalación nueva, sin datos previos.
 --
 -- Si ya tienes una base con alumnos, pagos, etc., NO uses este archivo:
@@ -87,7 +87,9 @@ CREATE TABLE `usuarios` (
     PRIMARY KEY (`id_usuario`),
     UNIQUE KEY `uq_usuarios_correo` (`correo`),
     KEY `idx_usuarios_alumno` (`id_alumno`),
-    KEY `idx_usuarios_profesor` (`id_profesor`)
+    KEY `idx_usuarios_profesor` (`id_profesor`),
+    CONSTRAINT `fk_usuarios_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT `fk_usuarios_profesor` FOREIGN KEY (`id_profesor`) REFERENCES `profesor` (`id_profesor`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 -- ---------------------------------------------------------------------
@@ -104,7 +106,8 @@ CREATE TABLE `clases` (
     `capacidad` INT(11) NOT NULL,
     `costo` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     PRIMARY KEY (`id_clase`),
-    KEY `idx_clases_profesor` (`id_profesor`)
+    KEY `idx_clases_profesor` (`id_profesor`),
+    CONSTRAINT `fk_clases_profesor` FOREIGN KEY (`id_profesor`) REFERENCES `profesor` (`id_profesor`) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 CREATE TABLE `inscripciones_clases` (
@@ -118,7 +121,10 @@ CREATE TABLE `inscripciones_clases` (
     PRIMARY KEY (`id_inscripcion`),
     UNIQUE KEY `uq_alumno_clase` (`id_alumno`,`id_clase`),
     KEY `idx_clase_estado` (`id_clase`,`estado`),
-    KEY `fk_insc_profesor` (`revisado_por_profesor`)
+    KEY `fk_insc_profesor` (`revisado_por_profesor`),
+    CONSTRAINT `fk_inscripcion_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT `fk_inscripcion_clase` FOREIGN KEY (`id_clase`) REFERENCES `clases` (`id_clase`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT `fk_inscripcion_profesor_revisa` FOREIGN KEY (`revisado_por_profesor`) REFERENCES `profesor` (`id_profesor`) ON UPDATE RESTRICT ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
 CREATE TABLE `clases_alumnos` (
@@ -150,6 +156,8 @@ CREATE TABLE `asistencias` (
     UNIQUE KEY `uq_asistencia_alumno_clase_fecha` (`id_alumno`,`id_clase`,`fecha`),
     KEY `idx_asistencias_clase` (`id_clase`),
     KEY `idx_asistencias_usuario` (`id_usuario_registra`),
+    CONSTRAINT `fk_asistencia_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT `fk_asistencia_clase` FOREIGN KEY (`id_clase`) REFERENCES `clases` (`id_clase`) ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT `fk_asistencia_usuario_registra` FOREIGN KEY (`id_usuario_registra`) REFERENCES `usuarios` (`id_usuario`) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
 
@@ -256,8 +264,8 @@ CREATE TABLE `pagos` (
     `fecha_pago` DATE NOT NULL,
     `metodo_pago` VARCHAR(50) NOT NULL,
     `folio` VARCHAR(32) NULL,
-    `tipo_pago` ENUM('mensualidad','clase_privada','otro') NULL,
-    `estado` ENUM('activo','cancelado') NULL,
+    `tipo_pago` ENUM('mensualidad','clase_privada','otro') NOT NULL DEFAULT 'otro',
+    `estado` ENUM('activo','cancelado') NOT NULL DEFAULT 'activo',
     `nombre_pagador` VARCHAR(200) NULL,
     `id_alumno_pagador` INT(20) NULL,
     `id_usuario_registra` INT(20) NULL,
@@ -269,6 +277,8 @@ CREATE TABLE `pagos` (
     UNIQUE KEY `uq_pago_privado_activo` (`sesion_privada_activa`),
     KEY `idx_pagos_alumno` (`id_alumno`),
     KEY `idx_pagos_tipo_estado_fecha` (`tipo_pago`,`estado`,`fecha_pago`),
+    CONSTRAINT `chk_pago_monto` CHECK (`monto` > 0),
+    CONSTRAINT `fk_pagos_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT `fk_pagos_alumno_pagador` FOREIGN KEY (`id_alumno_pagador`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT `fk_pagos_usuario_registra` FOREIGN KEY (`id_usuario_registra`) REFERENCES `usuarios` (`id_usuario`) ON UPDATE CASCADE ON DELETE RESTRICT,
     -- MariaDB rechaza (error 1901) ON UPDATE CASCADE sobre id_sesion_privada, base de sesion_privada_activa.
@@ -376,7 +386,7 @@ CREATE TABLE `migraciones_estado` (
 --   php migrate.php up     --target-db=escuela --env-id=<tu-env> --confirm-write=YES
 --
 -- Como las tablas ya existen y todas las sentencias usan IF NOT EXISTS,
--- esto no falla: solo registra las 6 migraciones como ejecutadas.
+-- esto no falla: solo registra las 10 migraciones como ejecutadas.
 
 -- ---------------------------------------------------------------------
 -- Datos semilla mínimos (catálogo de cinturones, tarifas vigentes,

@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
 require_permission('professors.manage');
-require_once dirname(__DIR__, 2) . '/config/database.php';
+$pdo = require dirname(__DIR__, 2) . '/config/conexion.php';
+$conexion = $pdo;
 
 $error = null;
 $input = $_POST;

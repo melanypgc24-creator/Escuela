@@ -83,7 +83,7 @@ El inicio devuelve una cookie de sesión y `csrf_token`. Envíalo como `X-CSRF-T
 | GET, POST | `/students` | Listar y crear alumnos |
 | GET, PUT, DELETE | `/students/{id}` | Consultar, actualizar y eliminar alumno |
 | GET, POST | `/memberships` | Listar y crear membresías |
-| GET, POST | `/payments` | Listar y registrar pagos |
+| GET, POST | `/payments` | Listar y registrar pagos (reglas en `PaymentModel`: fecha solo de hoy; tarjeta requiere `tarjeta_titular/numero/vencimiento/cvv`; transferencia requiere `transferencia_referencia/banco/fecha`) |
 | GET | `/debts` | Consultar adeudos pendientes |
 | GET, POST | `/attendance` | Listar y registrar asistencias |
 | GET | `/dashboard` | Resumen administrativo |
@@ -145,7 +145,7 @@ Por eso:
 - No todas las migraciones pueden revertirse con `ROLLBACK`.
 - Para DDL, el runner ejecuta en modo no transaccional y se detiene ante errores.
 - Si una migración falla o se interrumpe, queda en estado `failed`/`interrupted` y `up` **no la repite automáticamente**.
-- Solo las migraciones marcadas `retry_safe` (hoy 003, 005, 006, 007, 008 y 009) pueden liberarse con `php migrate.php recover --migration=<id> ...` y repetirse con `up`. Las demás requieren restaurar el respaldo.
+- Solo las migraciones marcadas `retry_safe` (hoy 003, 005, 006, 007, 008, 009 y 010) pueden liberarse con `php migrate.php recover --migration=<id> ...` y repetirse con `up`. Las demás requieren restaurar el respaldo.
 - Usa respaldos y entornos aislados antes de ejecutar migraciones en ambientes compartidos.
 
 ### Claves foráneas y columnas generadas (MariaDB 10.11)
@@ -172,7 +172,7 @@ Esta guía es para quien ya tiene una base con alumnos, profesores, pagos y su c
    $env:MIGRATIONS_ENV_ID='actualizacion-2026-11'
    ```
 
-4. **Revisa el estado** (solo lectura). En una base sin migrar verás `Sistema de migraciones no inicializado` y las 6 migraciones `pending`:
+4. **Revisa el estado** (solo lectura). En una base sin migrar verás `Sistema de migraciones no inicializado` y las 10 migraciones `pending`:
 
    ```powershell
    php migrate.php status
@@ -185,7 +185,7 @@ Esta guía es para quien ya tiene una base con alumnos, profesores, pagos y su c
    php migrate.php up   --target-db=escuela --env-id=actualizacion-2026-11 --confirm-write=YES --backup-confirmed=YES
    ```
 
-6. **Verifica**: `php migrate.php status` debe mostrar las 9 migraciones como `executed`. Puedes ejecutar `up` otra vez: responde `No hay migraciones pendientes`. Inicia sesión con tu cuenta de administrador de siempre; tus IDs no cambian, con una excepción: la migración 007 reubica al profesor con ID 0 a un ID nuevo (y reapunta sus clases y su cuenta), porque 0 es un valor frágil en MySQL/MariaDB. Esa misma migración corrige la cuenta de secretaría de ejemplo: `sevcretaria@localhost.com` pasa a `secretaria@localhost.com` con rol `recepcionista`, y su ficha de alumno queda inactiva.
+6. **Verifica**: `php migrate.php status` debe mostrar las 10 migraciones como `executed`. Puedes ejecutar `up` otra vez: responde `No hay migraciones pendientes`. Inicia sesión con tu cuenta de administrador de siempre; tus IDs no cambian, con una excepción: la migración 007 reubica al profesor con ID 0 a un ID nuevo (y reapunta sus clases y su cuenta), porque 0 es un valor frágil en MySQL/MariaDB. Esa misma migración corrige la cuenta de secretaría de ejemplo: `sevcretaria@localhost.com` pasa a `secretaria@localhost.com` con rol `recepcionista`, y su ficha de alumno queda inactiva.
 
 **Si algo falla:**
 

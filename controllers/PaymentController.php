@@ -38,15 +38,13 @@ final class PaymentController
             return;
         }
         $studentId = filter_var($input['id_alumno'] ?? $input['student_id'] ?? null, FILTER_VALIDATE_INT);
-        $amount = $input['monto'] ?? $input['amount'] ?? null;
         $method = $input['metodo_pago'] ?? $input['method'] ?? '';
-        $paidAt = $input['fecha_pago'] ?? $input['paid_at'] ?? date('Y-m-d H:i:s');
-        $payerName = $input['nombre_pagador'] ?? null;
         $payerId = $input['id_alumno_pagador'] ?? null;
         $payerId = $payerId === null || $payerId === '' ? null : filter_var($payerId, FILTER_VALIDATE_INT);
+        // Aquí solo se valida la forma de la solicitud y qué métodos puede usar el rol. Las reglas del pago
+        // (monto, fecha, nombre del pagador, tarjeta, transferencia) viven en PaymentModel::create(), el mismo
+        // camino que usa la caja web.
         if ($studentId === false || $studentId < 0
-            || (!is_string($amount) && !is_int($amount) && !is_float($amount))
-            || preg_match('/^\d{1,8}(?:\.\d{1,2})?$/D', (string) $amount) !== 1 || (float) $amount <= 0
             || !in_array(
                 $method,
                 ($_SESSION['rol'] ?? null) === 'recepcionista'
@@ -54,8 +52,6 @@ final class PaymentController
                     : ['cash', 'transfer', 'card', 'other', 'efectivo', 'transferencia', 'tarjeta'],
                 true
             )
-            || !is_string($paidAt) || !Request::isValidDateTime($paidAt)
-            || !is_string($payerName) || trim($payerName) === ''
             || ($payerId !== null && $payerId === false)) {
             JsonResponse::send(['error' => 'Datos de pago inválidos.'], 422);
             return;
@@ -63,13 +59,13 @@ final class PaymentController
         try {
             $id = $this->payments->create([
                 'id_alumno' => $studentId,
-                'monto' => (string) $amount,
-                'fecha_pago' => (new \DateTimeImmutable($paidAt))->format('Y-m-d'),
+                'monto' => $input['monto'] ?? $input['amount'] ?? null,
+                'fecha_pago' => $input['fecha_pago'] ?? $input['paid_at'] ?? null,
                 'metodo_pago' => $method,
-                'nombre_pagador' => trim($payerName),
+                'nombre_pagador' => $input['nombre_pagador'] ?? null,
                 'id_alumno_pagador' => $payerId,
                 'id_usuario_registra' => (int) $_SESSION['id_usuario'],
-            ]);
+            ] + array_intersect_key($input, array_flip(PaymentModel::METHOD_FIELDS)));
             JsonResponse::send(['data' => ['id_pago' => $id]], 201);
         } catch (DomainException $exception) {
             JsonResponse::send(['error' => $exception->getMessage()], 422);

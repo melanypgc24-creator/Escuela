@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/includes/auth_check.php';
 require_permission('professors.read');
-require_once dirname(__DIR__, 2) . '/config/database.php';
+$pdo = require dirname(__DIR__, 2) . '/config/conexion.php';
+$conexion = $pdo;
 
 $profesores = $conexion->query(
     'SELECT id_profesor, nombre, apellidos, telefono FROM profesor ORDER BY apellidos, nombre'
