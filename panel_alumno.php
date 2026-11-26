@@ -426,30 +426,7 @@ foreach ($menu as $entry) {
                     </div>
                 </section>
 
-                <section class="tc-grid tc-grid-even">
-                    <div class="tc-panel">
-                        <div class="tc-panel-head">
-                            <div><span class="tc-eyebrow">HISTORIAL</span><h2>Últimas asistencias</h2></div>
-                            <a class="tc-link-more" href="panel_alumno.php?seccion=asistencias">Ver todas</a>
-                        </div>
-                        <?php if ($attendance === []): ?>
-                            <div class="tc-empty"><i class="fa-regular fa-clipboard" aria-hidden="true"></i><span>Aún no tienes asistencias registradas.</span></div>
-                        <?php else: ?>
-                            <div class="admin-table-wrap">
-                                <table class="admin-table">
-                                    <thead><tr><th>Fecha</th><th>Clase</th></tr></thead>
-                                    <tbody>
-                                        <?php foreach ($attendance as $row): ?>
-                                            <tr>
-                                                <td data-label="Fecha"><?= $escape($date($row['fecha'] ?? '')) ?></td>
-                                                <td data-label="Clase"><?= $escape($row['nombre_clase'] ?? '') ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                
 
                     <div class="tc-panel">
                         <div class="tc-panel-head">

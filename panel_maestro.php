@@ -9,18 +9,40 @@ header('Cache-Control: no-store');
 $professorId = $_SESSION['id_profesor'] ?? null;
 $classes = [];
 $students = [];
-$attendance = [];
 $pendingRequests = [];
+$classRoster = [];
+$attendedStudentIds = [];
+$selectedClassId = null;
+$selectedDate = date('Y-m-d');
 $warning = null;
 $requestSuccess = null;
 $requestError = null;
+$attendanceSuccess = null;
+$attendanceError = null;
 $sectionWarnings = [];
+
+$isValidDate = static fn (string $value): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+    && strtotime($value) !== false;
 
 if (!is_int($professorId)) {
     $warning = 'Tu cuenta no está vinculada a un profesor. Solicita la vinculación al administrador.';
 } else {
     try {
         $pdo = require __DIR__ . '/config/conexion.php';
+
+        // Lee clase y fecha solicitadas por GET o POST
+        $rawSelectedClass = $_POST['id_clase'] ?? ($_GET['clase_id'] ?? null);
+        if ($rawSelectedClass !== null && $rawSelectedClass !== '') {
+            $parsedClass = filter_var($rawSelectedClass, FILTER_VALIDATE_INT);
+            if ($parsedClass !== false && $parsedClass > 0) {
+                $selectedClassId = $parsedClass;
+            }
+        }
+
+        $rawDate = trim((string) ($_POST['fecha_asistencia'] ?? ($_GET['fecha'] ?? date('Y-m-d'))));
+        if ($isValidDate($rawDate)) {
+            $selectedDate = $rawDate;
+        }
 
         if (
             ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
@@ -127,6 +149,139 @@ if (!is_int($professorId)) {
             $sectionWarnings[] = 'No se pudieron cargar clases o alumnos asignados.';
         }
 
+        // Si no se eligió clase aún y el profesor tiene al menos una, toma la primera por defecto
+        if ($selectedClassId === null && $classes !== []) {
+            $firstClassId = (int) ($classes[0]['id_clase'] ?? 0);
+            if ($firstClassId > 0) {
+                $selectedClassId = $firstClassId;
+            }
+        }
+
+        // Verifica que la clase seleccionada pertenezca al profesor
+        $ownedClass = null;
+        foreach ($classes as $cls) {
+            if ((int) ($cls['id_clase'] ?? 0) === $selectedClassId) {
+                $ownedClass = $cls;
+                break;
+            }
+        }
+        if ($ownedClass === null) {
+            $selectedClassId = null;
+        }
+
+        // Carga alumnos inscritos/aceptados en la clase seleccionada
+        if ($selectedClassId !== null) {
+            $rosterStmt = $pdo->prepare(
+                'SELECT DISTINCT a.id_alumno,
+                        a.matricula,
+                        a.nombre,
+                        a.apellidos,
+                        c.color AS color_cinturon
+                 FROM alumnos a
+                 LEFT JOIN cinturon c ON c.id_cinturon = a.id_cinturon
+                 WHERE a.id_alumno IN (
+                     SELECT ic.id_alumno
+                     FROM inscripciones_clases ic
+                     WHERE ic.id_clase = :id_clase_insc AND ic.estado = "aceptada"
+                     UNION
+                     SELECT ca.id_alumno
+                     FROM clases_alumnos ca
+                     WHERE ca.id_clase = :id_clase_alum AND ca.estado = "activa"
+                 )
+                 ORDER BY a.apellidos, a.nombre'
+            );
+            $rosterStmt->execute([
+                'id_clase_insc' => $selectedClassId,
+                'id_clase_alum' => $selectedClassId,
+            ]);
+            $classRoster = $rosterStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        // Guarda pase de lista por POST usando botones de radio Asistió (1) / No asistió (0)
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['accion'] ?? '') === 'guardar_asistencia') {
+            require_valid_csrf();
+
+            if ($selectedClassId === null) {
+                $attendanceError = 'Selecciona una clase válida antes de guardar la asistencia.';
+            } elseif (!$isValidDate($rawDate)) {
+                $attendanceError = 'La fecha seleccionada no es válida.';
+            } else {
+                $rosterIds = array_map(static fn (array $r): int => (int) ($r['id_alumno'] ?? 0), $classRoster);
+                $rosterLookup = array_flip(array_filter($rosterIds, static fn (int $id): bool => $id > 0));
+
+                $submittedStatuses = is_array($_POST['asistencia'] ?? null) ? $_POST['asistencia'] : [];
+                $markedPresent = [];
+                foreach ($submittedStatuses as $rawStudentId => $statusValue) {
+                    $sid = filter_var($rawStudentId, FILTER_VALIDATE_INT);
+                    if ($sid !== false && isset($rosterLookup[$sid]) && (string) $statusValue === '1') {
+                        $markedPresent[$sid] = true;
+                    }
+                }
+
+                try {
+                    $pdo->beginTransaction();
+
+                    $userRegId = isset($_SESSION['id_usuario']) ? (int) $_SESSION['id_usuario'] : null;
+                    $horaActual = date('H:i:s');
+
+                    $upsertStmt = $pdo->prepare(
+                        'INSERT INTO asistencias (id_alumno, id_clase, fecha, hora, id_usuario_registra)
+                         VALUES (:id_alumno, :id_clase, :fecha, :hora, :id_usuario_registra)
+                         ON DUPLICATE KEY UPDATE
+                             hora = VALUES(hora),
+                             id_usuario_registra = VALUES(id_usuario_registra)'
+                    );
+                    $deleteStmt = $pdo->prepare(
+                        'DELETE FROM asistencias
+                         WHERE id_alumno = :id_alumno AND id_clase = :id_clase AND fecha = :fecha'
+                    );
+
+                    foreach ($rosterLookup as $studentId => $_) {
+                        if (isset($markedPresent[$studentId])) {
+                            $upsertStmt->execute([
+                                'id_alumno'           => $studentId,
+                                'id_clase'            => $selectedClassId,
+                                'fecha'               => $selectedDate,
+                                'hora'                => $horaActual,
+                                'id_usuario_registra' => $userRegId,
+                            ]);
+                        } else {
+                            $deleteStmt->execute([
+                                'id_alumno' => $studentId,
+                                'id_clase'  => $selectedClassId,
+                                'fecha'     => $selectedDate,
+                            ]);
+                        }
+                    }
+
+                    $pdo->commit();
+                    $attendanceSuccess = 'Asistencia guardada para el ' . date('d/m/Y', strtotime($selectedDate)) . '.';
+                } catch (\Throwable $attException) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    error_log('Error al guardar asistencia: ' . $attException->getMessage());
+                    $attendanceError = 'No se pudo guardar la asistencia.';
+                }
+            }
+        }
+
+        // Consulta qué alumnos de la clase seleccionada tienen asistencia en la fecha elegida
+        if ($selectedClassId !== null) {
+            $attDayStmt = $pdo->prepare(
+                'SELECT id_alumno
+                 FROM asistencias
+                 WHERE id_clase = :id_clase AND fecha = :fecha'
+            );
+            $attDayStmt->execute([
+                'id_clase' => $selectedClassId,
+                'fecha'    => $selectedDate,
+            ]);
+            foreach ($attDayStmt->fetchAll(PDO::FETCH_COLUMN) as $aid) {
+                $attendedStudentIds[(int) $aid] = true;
+            }
+        }
+
         try {
             $reqListStmt = $pdo->prepare(
                 'SELECT ic.id_inscripcion,
@@ -153,12 +308,6 @@ if (!is_int($professorId)) {
         } catch (\PDOException $exception) {
             error_log('Error al cargar solicitudes pendientes: ' . $exception->getMessage());
             $sectionWarnings[] = 'No se pudieron cargar las solicitudes de inscripción.';
-        }
-
-        try {
-            $attendance = array_slice((new \App\Models\AttendanceModel($pdo))->allForProfessor($professorId), 0, 15);
-        } catch (\PDOException $exception) {
-            $sectionWarnings[] = 'No se pudo cargar la asistencia reciente.';
         }
     } catch (\PDOException $exception) {
         error_log('Professor panel failed: ' . $exception->getMessage());
@@ -217,6 +366,16 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                 </a>
             </li>
             <li>
+                <a class="tc-link" href="#pasar-asistencia">
+                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>Pasar asistencia
+                </a>
+            </li>
+            <li>
+                <a class="tc-link" href="modulos/asistencias/historial_asistencias.php">
+                    <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>Historial de listas
+                </a>
+            </li>
+            <li>
                 <a class="tc-link" href="#solicitudes-inscripcion">
                     <i class="fa-solid fa-user-plus" aria-hidden="true"></i>Solicitudes
                     <?php if ($pendingRequests !== []): ?>
@@ -232,11 +391,6 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
             <li>
                 <a class="tc-link" href="#alumnos-asignados">
                     <i class="fa-solid fa-users" aria-hidden="true"></i>Alumnos asignados
-                </a>
-            </li>
-            <li>
-                <a class="tc-link" href="#asistencia-reciente">
-                    <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>Asistencia reciente
                 </a>
             </li>
         </ul>
@@ -255,7 +409,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                 <div>
                     <span class="tc-eyebrow">TEAM CATS · INSTRUCTOR</span>
                     <h1>Panel de instructor</h1>
-                    <p>Clases, solicitudes de inscripción, alumnos y asistencia de tus grupos.</p>
+                    <p>Clases, pase de lista, solicitudes de inscripción y alumnos de tus grupos.</p>
                 </div>
                 <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
             </section>
@@ -271,11 +425,19 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                     <p class="auth-error admin-message" role="alert"><?= $escape($requestError) ?></p>
                 <?php endif; ?>
 
+                <?php if ($attendanceSuccess !== null): ?>
+                    <p class="auth-success admin-message" role="status"><?= $escape($attendanceSuccess) ?></p>
+                <?php endif; ?>
+
+                <?php if ($attendanceError !== null): ?>
+                    <p class="auth-error admin-message" role="alert"><?= $escape($attendanceError) ?></p>
+                <?php endif; ?>
+
                 <?php foreach ($sectionWarnings as $sectionWarning): ?>
                     <p class="auth-error admin-message" role="alert"><?= $escape($sectionWarning) ?></p>
                 <?php endforeach; ?>
 
-                <section class="tc-metrics tc-metrics-4" aria-label="Resumen de actividad">
+                <section class="tc-metrics tc-metrics-3" aria-label="Resumen de actividad">
                     <article class="tc-metric">
                         <span class="tc-metric-icon"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i></span>
                         <span class="tc-metric-label">Clases asignadas</span>
@@ -291,11 +453,98 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         <span class="tc-metric-label">Alumnos asignados</span>
                         <span class="tc-metric-value"><?= number_format(count($students)) ?></span>
                     </article>
-                    <article class="tc-metric">
-                        <span class="tc-metric-icon"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></span>
-                        <span class="tc-metric-label">Asistencias recientes</span>
-                        <span class="tc-metric-value"><?= number_format(count($attendance)) ?></span>
-                    </article>
+                </section>
+
+                <section class="tc-panel" id="pasar-asistencia">
+                    <div class="tc-panel-head">
+                        <div>
+                            <span class="tc-eyebrow">CONTROL DE ASISTENCIA</span>
+                            <h2>Pasar asistencia por clase</h2>
+                        </div>
+                        <a class="tc-link-more" href="modulos/asistencias/historial_asistencias.php">Ver historial de días anteriores</a>
+                    </div>
+
+                    <?php if ($classes === []): ?>
+                        <div class="tc-empty"><span>No tienes clases asignadas para registrar asistencia.</span></div>
+                    <?php else: ?>
+                        <form method="get" action="panel_maestro.php#pasar-asistencia" class="class-create-form" style="margin-bottom: 18px;">
+                            <label for="clase_id">Clase</label>
+                            <select id="clase_id" name="clase_id" onchange="this.form.submit()">
+                                <?php foreach ($classes as $cls): ?>
+                                    <?php $cid = (int) ($cls['id_clase'] ?? 0); ?>
+                                    <option value="<?= $escape((string) $cid) ?>" <?= $cid === $selectedClassId ? 'selected' : '' ?>>
+                                        <?= $escape(($cls['nombre_clase'] ?? '') . ' (' . ($cls['dias'] ?? '') . ' · ' . $time($cls['hora_inicio'] ?? '') . ')') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <label for="fecha">Fecha</label>
+                            <div class="admin-user-actions">
+                                <input id="fecha" name="fecha" type="date" value="<?= $escape($selectedDate) ?>">
+                                <button type="submit" class="admin-save">Cargar lista</button>
+                            </div>
+                        </form>
+
+                        <?php if ($classRoster === []): ?>
+                            <div class="tc-empty"><span>No hay alumnos inscritos o aceptados en esta clase.</span></div>
+                        <?php else: ?>
+                            <form method="post" action="panel_maestro.php?clase_id=<?= $escape((string) $selectedClassId) ?>&amp;fecha=<?= $escape($selectedDate) ?>#pasar-asistencia">
+                                <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+                                <input type="hidden" name="accion" value="guardar_asistencia">
+                                <input type="hidden" name="id_clase" value="<?= $escape((string) $selectedClassId) ?>">
+                                <input type="hidden" name="fecha_asistencia" value="<?= $escape($selectedDate) ?>">
+
+                                <div class="admin-table-wrap">
+                                    <table class="admin-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Matrícula</th>
+                                                <th>Alumno</th>
+                                                <th>Cinturón</th>
+                                                <th>Asistencia (<?= $escape(date('d/m/Y', strtotime($selectedDate))) ?>)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($classRoster as $member): ?>
+                                                <?php
+                                                $sid = (int) ($member['id_alumno'] ?? 0);
+                                                $isPresent = isset($attendedStudentIds[$sid]);
+                                                $fullName = trim((string) (($member['nombre'] ?? '') . ' ' . ($member['apellidos'] ?? '')));
+                                                ?>
+                                                <tr>
+                                                    <td data-label="Matrícula"><?= $escape($member['matricula'] ?? 'Pendiente') ?></td>
+                                                    <td data-label="Alumno"><strong><?= $escape($fullName) ?></strong></td>
+                                                    <td data-label="Cinturón"><?= $escape($member['color_cinturon'] ?? 'Sin asignar') ?></td>
+                                                    <td data-label="Asistencia">
+                                                        <div style="display:inline-flex;align-items:center;gap:14px;">
+                                                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                                                                <input type="radio"
+                                                                       name="asistencia[<?= $escape((string) $sid) ?>]"
+                                                                       value="1"
+                                                                       <?= $isPresent ? 'checked' : '' ?>>
+                                                                <span>Asistió</span>
+                                                            </label>
+                                                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                                                                <input type="radio"
+                                                                       name="asistencia[<?= $escape((string) $sid) ?>]"
+                                                                       value="0"
+                                                                       <?= !$isPresent ? 'checked' : '' ?>>
+                                                                <span>No asistió</span>
+                                                            </label>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="role-dashboard-actions" style="margin-top: 14px;">
+                                    <button type="submit" class="admin-save">Guardar asistencia</button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </section>
 
                 <section class="tc-panel" id="solicitudes-inscripcion">
@@ -412,34 +661,6 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                                             <td data-label="Nombre"><?= $escape(($student['nombre'] ?? '') . ' ' . ($student['apellidos'] ?? '')) ?></td>
                                             <td data-label="Teléfono"><?= $escape($student['telefono'] ?? '') ?></td>
                                             <td data-label="Cinturón"><?= $escape($student['color_cinturon'] ?? 'Sin asignar') ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </section>
-
-                <section class="tc-panel" id="asistencia-reciente">
-                    <div class="tc-panel-head">
-                        <div>
-                            <span class="tc-eyebrow">HISTORIAL</span>
-                            <h2>Asistencia reciente</h2>
-                        </div>
-                    </div>
-                    <?php if ($attendance === []): ?>
-                        <div class="tc-empty"><span>Aún no hay asistencias registradas.</span></div>
-                    <?php else: ?>
-                        <div class="admin-table-wrap">
-                            <table class="admin-table">
-                                <thead><tr><th>Fecha</th><th>Hora</th><th>Alumno</th><th>Clase</th></tr></thead>
-                                <tbody>
-                                    <?php foreach ($attendance as $row): ?>
-                                        <tr>
-                                            <td data-label="Fecha"><?= $escape($row['fecha'] ?? '') ?></td>
-                                            <td data-label="Hora"><?= $escape($row['hora'] ?? '') ?></td>
-                                            <td data-label="Alumno"><?= $escape($row['alumno'] ?? '') ?></td>
-                                            <td data-label="Clase"><?= $escape($row['nombre_clase'] ?? '') ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
