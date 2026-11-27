@@ -64,7 +64,10 @@ include dirname(__DIR__, 2) . '/includes/header.php';
         <input id="apellidos" name="apellidos" maxlength="100" required value="<?= $escape($input['apellidos'] ?? '') ?>">
         <label for="telefono">Teléfono</label>
         <input id="telefono" name="telefono" type="tel" maxlength="20" required value="<?= $escape($input['telefono'] ?? '') ?>">
-        <button type="submit">Guardar profesor</button>
+        <div class="admin-user-actions">
+            <button type="submit" class="admin-save">Guardar profesor</button>
+            <a class="admin-cancel" href="maestros.php">Cancelar y volver a profesores</a>
+        </div>
     </form>
 </main>
 <?php include dirname(__DIR__, 2) . '/includes/footer.php'; ?>

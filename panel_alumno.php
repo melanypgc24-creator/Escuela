@@ -15,6 +15,7 @@ $sections = [
     'adeudos' => ['label' => 'Adeudos', 'icon' => 'fa-file-invoice-dollar'],
     'notificaciones' => ['label' => 'Notificaciones', 'icon' => 'fa-bell'],
     'perfil' => ['label' => 'Mi perfil', 'icon' => 'fa-id-card'],
+    'editar_perfil' => ['label' => 'Editar mis datos', 'icon' => 'fa-pen-to-square'],
 ];
 $menu = [
     ['key' => 'inicio'],
@@ -40,6 +41,14 @@ $linked = is_int($studentId);
 $inscriptionSuccess = null;
 $inscriptionError = null;
 $availableClasses = [];
+$cancelledClasses = [];
+$profileError = null;
+$profileInput = [];
+$profileSuccess = null;
+if ($section === 'perfil') {
+    $profileSuccess = $_SESSION['flash_perfil'] ?? null;
+    unset($_SESSION['flash_perfil']);
+}
 
 if ($linked) {
     try {
@@ -57,25 +66,21 @@ if ($linked) {
             if ($classId === false || $classId < 0) {
                 $inscriptionError = 'La clase seleccionada no es válida.';
             } else {
-                // Verifica que la clase exista y consulta su capacidad
-                $classStmt = $pdo->prepare('SELECT id_clase, capacidad FROM clases WHERE id_clase = :id_clase LIMIT 1');
-                $classStmt->execute(['id_clase' => $classId]);
-                $classRow = $classStmt->fetch(PDO::FETCH_ASSOC);
-
-                if (!is_array($classRow)) {
-                    $inscriptionError = 'La clase seleccionada ya no está disponible.';
-                } else {
-                    // Verifica cupo ocupado (solo inscripciones aceptadas)
+                $pdo->beginTransaction();
+                try {
+                    (new \App\Models\ClassCategoryModel($pdo))->requireCompatible((int) $classId, $studentId);
+                    $classStmt = $pdo->prepare('SELECT capacidad FROM clases WHERE id_clase = :id_clase');
+                    $classStmt->execute(['id_clase' => $classId]);
+                    $capacity = (int) $classStmt->fetchColumn();
                     $occupiedStmt = $pdo->prepare(
                         'SELECT COUNT(*) FROM inscripciones_clases WHERE id_clase = :id_clase AND estado = "aceptada"'
                     );
                     $occupiedStmt->execute(['id_clase' => $classId]);
                     $occupied = (int) $occupiedStmt->fetchColumn();
 
-                    if ($occupied >= (int) ($classRow['capacidad'] ?? 0)) {
+                    if ($occupied >= $capacity) {
                         $inscriptionError = 'Esta clase ya alcanzó su capacidad máxima.';
                     } else {
-                        // Verifica si ya existe una solicitud/inscripción del alumno para esa clase
                         $existingStmt = $pdo->prepare(
                             'SELECT id_inscripcion, estado FROM inscripciones_clases
                              WHERE id_alumno = :id_alumno AND id_clase = :id_clase LIMIT 1'
@@ -92,7 +97,6 @@ if ($linked) {
                             } elseif (($existing['estado'] ?? '') === 'pendiente') {
                                 $inscriptionError = 'Ya tienes una solicitud pendiente para esta clase.';
                             } else {
-                                // Si había sido rechazada anteriormente, permite volver a solicitar
                                 $reopenStmt = $pdo->prepare(
                                     'UPDATE inscripciones_clases
                                      SET estado = "pendiente",
@@ -116,6 +120,13 @@ if ($linked) {
                             $inscriptionSuccess = 'Solicitud enviada. Espera a que el profesor la apruebe.';
                         }
                     }
+                    $pdo->commit();
+                } catch (\DomainException $exception) {
+                    $pdo->rollBack();
+                    $inscriptionError = $exception->getMessage();
+                } catch (\Throwable $exception) {
+                    $pdo->rollBack();
+                    throw $exception;
                 }
             }
             $section = 'inscripcion';
@@ -123,6 +134,34 @@ if ($linked) {
 
         $portal = new \App\Models\StudentPortalModel($pdo);
         $profile = $portal->profile($studentId);
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['accion'] ?? '') === 'actualizar_perfil') {
+            require_valid_csrf();
+            $section = 'editar_perfil';
+            $profileInput = $_POST;
+            $allowedFields = ['csrf_token', 'accion', 'nombre', 'apellidos', 'telefono', 'fecha_nacimiento', 'correo_contacto', 'direccion'];
+            if (array_diff(array_keys($_POST), $allowedFields) !== []) {
+                http_response_code(403);
+                $profileError = 'La solicitud contiene campos que no puedes modificar.';
+            } elseif (!is_array($profile)) {
+                http_response_code(404);
+                $profileError = 'No se encontró tu ficha de alumno.';
+            } else {
+                try {
+                    $data = \App\Controllers\StudentController::validateOwnProfile($_POST);
+                    if (!(new \App\Models\StudentModel($pdo))->updateOwnProfile($studentId, (int) $_SESSION['id_usuario'], $data)) {
+                        http_response_code(403);
+                        $profileError = 'No se pudo validar que esta ficha pertenezca a tu cuenta.';
+                    } else {
+                        $_SESSION['flash_perfil'] = 'Tus datos se actualizaron correctamente.';
+                        header('Location: panel_alumno.php?seccion=perfil');
+                        exit;
+                    }
+                } catch (\InvalidArgumentException $exception) {
+                    http_response_code(422);
+                    $profileError = $exception->getMessage();
+                }
+            }
+        }
         $notifications = $portal->notifications((int) $_SESSION['id_usuario']);
 
         // Cargar clases aceptadas en inscripciones_clases para Inicio y Mis clases
@@ -151,7 +190,17 @@ if ($linked) {
             $attendance = $portal->attendance($studentId, 5);
         } elseif ($section === 'clases') {
             $classes = $loadAcceptedClasses($pdo, $studentId);
+            $cancelledStmt = $pdo->prepare(
+                'SELECT c.nombre_clase, ic.fecha_resolucion
+                 FROM inscripciones_clases ic
+                 JOIN clases c ON c.id_clase = ic.id_clase
+                 WHERE ic.id_alumno = :id_alumno AND ic.estado = "cancelada"
+                 ORDER BY ic.fecha_resolucion DESC'
+            );
+            $cancelledStmt->execute(['id_alumno' => $studentId]);
+            $cancelledClasses = $cancelledStmt->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($section === 'inscripcion') {
+            $studentCategory = \App\Models\ClassCategoryModel::studentCategorySql('a');
             $availStmt = $pdo->prepare(
                 'SELECT c.id_clase,
                         c.nombre_clase,
@@ -159,18 +208,21 @@ if ($linked) {
                         c.hora_inicio,
                         c.hora_fin,
                         c.capacidad,
+                        c.categoria,
                         TRIM(CONCAT(COALESCE(p.nombre, ""), " ", COALESCE(p.apellidos, ""))) AS profesor,
                         ic.estado AS estado_solicitud,
                         (SELECT COUNT(*)
                          FROM inscripciones_clases ic2
                          WHERE ic2.id_clase = c.id_clase AND ic2.estado = "aceptada") AS inscritos_aceptados
                  FROM clases c
+                 JOIN alumnos a ON a.id_alumno = :categoria_alumno
                  LEFT JOIN profesor p ON p.id_profesor = c.id_profesor
                  LEFT JOIN inscripciones_clases ic
                         ON ic.id_clase = c.id_clase AND ic.id_alumno = :id_alumno
+                 WHERE c.categoria = ' . $studentCategory . '
                  ORDER BY c.nombre_clase, c.hora_inicio'
             );
-            $availStmt->execute(['id_alumno' => $studentId]);
+            $availStmt->execute(['id_alumno' => $studentId, 'categoria_alumno' => $studentId]);
             $availableClasses = $availStmt->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($section === 'asistencias') {
             $attendance = $portal->attendance($studentId);
@@ -190,6 +242,10 @@ if ($linked) {
 
 $csrfToken = htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8');
 $escape = static fn (mixed $value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+$profileValue = static function (string $key) use ($profileInput, $profile): string {
+    $value = $profileInput !== [] ? ($profileInput[$key] ?? '') : ($profile[$key] ?? '');
+    return is_string($value) ? $value : '';
+};
 $fullName = is_array($profile) ? trim(($profile['nombre'] ?? '') . ' ' . ($profile['apellidos'] ?? '')) : '';
 $displayName = $fullName !== '' ? $fullName : 'Alumno';
 $firstName = is_array($profile) && trim((string) ($profile['nombre'] ?? '')) !== ''
@@ -293,9 +349,9 @@ foreach ($menu as $entry) {
         <ul class="tc-menu" aria-label="Secciones del alumno">
             <?php foreach ($menu as $entry): ?>
                 <?php if (isset($entry['key'])): ?>
-                    <?php $info = $sections[$entry['key']]; $isCurrent = $entry['key'] === $section; ?>
+                    <?php $info = $sections[$entry['key']]; $isCurrent = $entry['key'] === $section; $isActive = $isCurrent || ($entry['key'] === 'perfil' && $section === 'editar_perfil'); ?>
                     <li>
-                        <a class="tc-link<?= $isCurrent ? ' is-active' : '' ?>" href="panel_alumno.php?seccion=<?= $escape($entry['key']) ?>"<?= $isCurrent ? ' aria-current="page"' : '' ?>>
+                        <a class="tc-link<?= $isActive ? ' is-active' : '' ?>" href="panel_alumno.php?seccion=<?= $escape($entry['key']) ?>"<?= $isCurrent ? ' aria-current="page"' : '' ?>>
                             <i class="fa-solid <?= $info['icon'] ?>" aria-hidden="true"></i><?= $escape($info['label']) ?>
                             <?php if ($entry['key'] === 'notificaciones' && $unread > 0): ?>
                                 <span class="tc-count tc-count-alert"><?= $unread > 9 ? '9+' : $unread ?></span>
@@ -335,6 +391,12 @@ foreach ($menu as $entry) {
                     <i class="fa-solid fa-angle-right" aria-hidden="true"></i><span><?= $escape($sections[$section]['label']) ?></span>
                 <?php endif; ?>
             </p>
+
+            <?php if ($section !== 'inicio'): ?>
+                <div class="tc-page-head tc-page-head-actions">
+                    <a class="admin-cancel" href="<?= $section === 'editar_perfil' ? 'panel_alumno.php?seccion=perfil' : 'panel_alumno.php' ?>"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> <?= $section === 'editar_perfil' ? 'Volver a mi perfil' : 'Volver al panel' ?></a>
+                </div>
+            <?php endif; ?>
 
             <?php if (!$linked): ?>
                 <section class="tc-panel">
@@ -454,6 +516,7 @@ foreach ($menu as $entry) {
                     </div>
                 </section>
             <?php elseif ($section === 'perfil'): ?>
+                <?php if (is_string($profileSuccess)): ?><p class="auth-success admin-message" role="status"><?= $escape($profileSuccess) ?></p><?php endif; ?>
                 <section class="tc-profile">
                     <span class="tc-avatar tc-avatar-lg"><?= $escape($initials) ?></span>
                     <div>
@@ -461,6 +524,9 @@ foreach ($menu as $entry) {
                         <p><?= $escape($email) ?></p>
                         <span class="tc-belt"><i class="fa-solid fa-medal" aria-hidden="true"></i> Cinturón <?= $escape($belt) ?></span>
                     </div>
+                    <?php if (is_array($profile)): ?>
+                        <a class="tc-btn tc-profile-action" href="panel_alumno.php?seccion=editar_perfil"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Editar mis datos</a>
+                    <?php endif; ?>
                 </section>
                 <section class="tc-panel">
                     <div class="tc-panel-head"><div><span class="tc-eyebrow">DATOS PERSONALES</span><h2>Mi información</h2></div></div>
@@ -468,16 +534,59 @@ foreach ($menu as $entry) {
                         <div><dt>Nombre</dt><dd><?= $escape($displayName) ?></dd></div>
                         <div><dt>Matrícula</dt><dd><?= $escape($profile['matricula'] ?? 'Aún no asignada') ?></dd></div>
                         <div><dt>Teléfono</dt><dd><?= $escape(($profile['telefono'] ?? '') !== '' ? $profile['telefono'] : 'Sin registro') ?></dd></div>
-                        <div><dt>Correo</dt><dd><?= $escape(($profile['correo_contacto'] ?? '') !== '' ? $profile['correo_contacto'] : $email) ?></dd></div>
+                        <div><dt>Correo de contacto</dt><dd><?= $escape(($profile['correo_contacto'] ?? '') !== '' ? $profile['correo_contacto'] : 'Sin registro') ?></dd></div>
+                        <div><dt>Correo de acceso</dt><dd><?= $escape($email) ?></dd></div>
+                        <div><dt>Dirección</dt><dd><?= $escape(($profile['direccion'] ?? '') !== '' ? $profile['direccion'] : 'Sin registro') ?></dd></div>
                         <div><dt>Fecha de nacimiento</dt><dd><?= $escape(($profile['fecha_nacimiento'] ?? '') !== '' ? $date($profile['fecha_nacimiento']) : 'Sin registro') ?></dd></div>
                         <div><dt>Cinturón</dt><dd><?= $escape($belt) ?></dd></div>
-                        <?php if (($profile['categoria'] ?? '') !== ''): ?>
-                            <div><dt>Categoría</dt><dd><?= $escape(ucfirst((string) $profile['categoria'])) ?></dd></div>
-                        <?php endif; ?>
+                        <div><dt>Categoría para clases</dt><dd><?= $escape(isset($profile['categoria_clases']) ? ucfirst($profile['categoria_clases']) : 'Sin determinar') ?></dd></div>
                         <?php if (($profile['fecha_ingreso'] ?? '') !== ''): ?>
                             <div><dt>Fecha de ingreso</dt><dd><?= $escape($date($profile['fecha_ingreso'])) ?></dd></div>
                         <?php endif; ?>
                     </dl>
+                </section>
+            <?php elseif ($section === 'editar_perfil'): ?>
+                <section class="tc-page-head">
+                    <span class="tc-eyebrow">MI PERFIL</span>
+                    <h1>Editar mis datos</h1>
+                    <p>Actualiza tu información personal y de contacto.</p>
+                </section>
+                <?php if ($profileError !== null): ?><p class="auth-error admin-message" role="alert"><?= $escape($profileError) ?></p><?php endif; ?>
+                <section class="tc-panel">
+                    <div class="tc-panel-head"><div><span class="tc-eyebrow">DATOS PERSONALES</span><h2>Editar mis datos</h2></div></div>
+                    <p class="tc-field-hint">Puedes actualizar tus datos y correo de contacto. La matrícula, el cinturón y el correo de acceso no se modifican aquí.</p>
+                    <form method="post" action="panel_alumno.php?seccion=editar_perfil" class="tc-form-grid">
+                        <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+                        <input type="hidden" name="accion" value="actualizar_perfil">
+                        <div class="tc-field">
+                            <label for="perfil_nombre">Nombre</label>
+                            <input id="perfil_nombre" name="nombre" autocomplete="given-name" maxlength="100" required value="<?= $escape($profileValue('nombre')) ?>">
+                        </div>
+                        <div class="tc-field">
+                            <label for="perfil_apellidos">Apellidos</label>
+                            <input id="perfil_apellidos" name="apellidos" autocomplete="family-name" maxlength="100" required value="<?= $escape($profileValue('apellidos')) ?>">
+                        </div>
+                        <div class="tc-field">
+                            <label for="perfil_telefono">Teléfono</label>
+                            <input id="perfil_telefono" name="telefono" type="tel" autocomplete="tel" maxlength="20" required value="<?= $escape($profileValue('telefono')) ?>">
+                            <span class="tc-field-hint">Entre 7 y 15 dígitos; puedes incluir espacios, paréntesis o guiones.</span>
+                        </div>
+                        <div class="tc-field">
+                            <label for="perfil_nacimiento">Fecha de nacimiento</label>
+                            <input id="perfil_nacimiento" name="fecha_nacimiento" type="date" min="1900-01-01" max="<?= $escape(date('Y-m-d')) ?>" required value="<?= $escape($profileValue('fecha_nacimiento')) ?>">
+                        </div>
+                        <div class="tc-field">
+                            <label for="perfil_correo">Correo de contacto (opcional)</label>
+                            <input id="perfil_correo" name="correo_contacto" type="email" autocomplete="email" maxlength="150" value="<?= $escape($profileValue('correo_contacto')) ?>">
+                        </div>
+                        <div class="tc-field">
+                            <label for="perfil_direccion">Dirección (opcional)</label>
+                            <input id="perfil_direccion" name="direccion" autocomplete="street-address" maxlength="255" value="<?= $escape($profileValue('direccion')) ?>">
+                        </div>
+                        <div class="tc-wide">
+                            <button type="submit" class="tc-btn"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Guardar mis datos</button>
+                        </div>
+                    </form>
                 </section>
             <?php elseif ($section === 'clases'): ?>
                 <?= $notice('clases') ?>
@@ -506,6 +615,17 @@ foreach ($menu as $entry) {
                         </div>
                     <?php endif; ?>
                 </section>
+                <?php if ($cancelledClasses !== []): ?>
+                    <section class="tc-panel">
+                        <div class="tc-panel-head"><div><span class="tc-eyebrow">HISTORIAL</span><h2>Inscripciones canceladas por categoría</h2></div></div>
+                        <p>Estas inscripciones se cancelaron porque la categoría de la clase dejó de coincidir con tu edad.</p>
+                        <ul>
+                            <?php foreach ($cancelledClasses as $cancelledClass): ?>
+                                <li><?= $escape($cancelledClass['nombre_clase']) ?> — <?= $escape($date($cancelledClass['fecha_resolucion'])) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </section>
+                <?php endif; ?>
             <?php elseif ($section === 'inscripcion'): ?>
                 <section class="tc-panel">
                     <div class="tc-panel-head">
@@ -527,7 +647,7 @@ foreach ($menu as $entry) {
                     <?php if ($availableClasses === []): ?>
                         <div class="tc-empty">
                             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-                            <span>No hay clases disponibles por el momento.</span>
+                            <span>No hay clases disponibles para tu categoría. Si tu fecha de nacimiento no está registrada, actualízala en tu perfil.</span>
                         </div>
                     <?php else: ?>
                         <div class="admin-table-wrap">
@@ -535,6 +655,7 @@ foreach ($menu as $entry) {
                                 <thead>
                                     <tr>
                                         <th>Clase</th>
+                                        <th>Categoría</th>
                                         <th>Profesor</th>
                                         <th>Días</th>
                                         <th>Horario</th>
@@ -553,6 +674,7 @@ foreach ($menu as $entry) {
                                         ?>
                                         <tr>
                                             <td data-label="Clase"><strong><?= $escape($row['nombre_clase'] ?? '') ?></strong></td>
+                                            <td data-label="Categoría"><?= $escape(ucfirst((string) $row['categoria'])) ?></td>
                                             <td data-label="Profesor"><?= $escape($prof) ?></td>
                                             <td data-label="Días"><?= $escape($row['dias'] ?? '') ?></td>
                                             <td data-label="Horario"><?= $escape($time($row['hora_inicio'] ?? '') . ' - ' . $time($row['hora_fin'] ?? '')) ?></td>
@@ -570,7 +692,7 @@ foreach ($menu as $entry) {
                                                         <input type="hidden" name="accion" value="solicitar_inscripcion">
                                                         <input type="hidden" name="id_clase" value="<?= $escape((string) ($row['id_clase'] ?? '')) ?>">
                                                         <button type="submit" class="admin-save">
-                                                            <?= $estado === 'rechazada' ? 'Volver a solicitar' : 'Solicitar inscripción' ?>
+                                                            <?= in_array($estado, ['rechazada', 'cancelada'], true) ? 'Volver a solicitar' : 'Solicitar inscripción' ?>
                                                         </button>
                                                     </form>
                                                 <?php endif; ?>
@@ -614,7 +736,7 @@ foreach ($menu as $entry) {
                     <?php else: ?>
                         <div class="admin-table-wrap">
                             <table class="admin-table">
-                                <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Folio</th><th>Estatus</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Folio</th><th>Estatus</th><th>Comprobante</th></tr></thead>
                                 <tbody>
                                     <?php foreach ($payments as $payment): ?>
                                         <tr>
@@ -624,6 +746,7 @@ foreach ($menu as $entry) {
                                             <td data-label="Método"><?= $escape($payment['metodo_pago'] ?? '') ?></td>
                                             <td data-label="Folio"><?= $escape(($payment['folio'] ?? '') !== '' ? $payment['folio'] : '—') ?></td>
                                             <td data-label="Estatus"><span class="admin-badge <?= ($payment['estado'] ?? 'activo') === 'activo' ? 'admin-badge-active' : 'admin-badge-inactive' ?>"><?= $escape(ucfirst((string) ($payment['estado'] ?? 'activo'))) ?></span></td>
+                                            <td><a href="comprobante.php?id=<?= (int) $payment['id_pago'] ?>">Ver</a></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>

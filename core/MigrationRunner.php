@@ -144,7 +144,7 @@ final class MigrationRunner
     /**
      * @return list<array{id:string,file:string,description:string,checksum:string}>
      */
-    public function migrate(): array
+    public function migrate(?string $onlyId = null): array
     {
         $migrations = $this->discoverAndValidate();
         $dbName = $this->repository->currentDatabaseName();
@@ -152,7 +152,14 @@ final class MigrationRunner
         return DatabaseLock::run(
             $this->db,
             self::lockNameForDatabase($dbName),
-            function () use ($migrations, $dbName): array {
+            function () use ($migrations, $dbName, $onlyId): array {
+                if ($onlyId !== null) {
+                    $selected = array_values(array_filter($migrations, static fn (array $migration): bool => $migration['id'] === $onlyId));
+                    if (count($selected) !== 1 || !$selected[0]['standalone']) {
+                        throw new MigrationException('La migración indicada no existe o no admite ejecución independiente.');
+                    }
+                    $migrations = $selected;
+                }
                 foreach ($migrations as $migration) {
                     $this->assertChecksumUnchanged($migration);
                 }
@@ -168,8 +175,11 @@ final class MigrationRunner
                 }
 
                 $status = $this->statusFor($migrations);
+                if ($onlyId !== null) {
+                    $status = array_values(array_filter($status, static fn (array $row): bool => $row['id'] === $onlyId));
+                }
                 $knownIds = array_fill_keys(array_column($migrations, 'id'), true);
-                foreach ($this->repository->allIndexedById() as $id => $record) {
+                foreach ($onlyId === null ? $this->repository->allIndexedById() : [] as $id => $record) {
                     if (!isset($knownIds[$id])) {
                         throw new MigrationException(
                             sprintf(
@@ -180,7 +190,7 @@ final class MigrationRunner
                         );
                     }
                 }
-                foreach ($this->repository->allStatesIndexedById() as $id => $state) {
+                foreach ($onlyId === null ? $this->repository->allStatesIndexedById() : [] as $id => $state) {
                     if (!isset($knownIds[$id])
                         && in_array($state['estado'], ['in_progress', 'failed'], true)) {
                         throw new MigrationException(
@@ -507,12 +517,16 @@ final class MigrationRunner
         $statements = $definition['statements'] ?? null;
         $preflight = $definition['preflight'] ?? [];
         $retrySafe = $definition['retry_safe'] ?? false;
+        $standalone = $definition['standalone'] ?? false;
 
         if (!is_string($id) || preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,190}$/D', trim($id)) !== 1) {
             throw new MigrationException(sprintf('La migración %s no tiene un id válido (máximo 191 caracteres ASCII).', $realPath));
         }
         if (!is_bool($retrySafe)) {
             throw new MigrationException(sprintf('La migración %s debe declarar retry_safe como booleano.', $realPath));
+        }
+        if (!is_bool($standalone)) {
+            throw new MigrationException(sprintf('La migración %s debe declarar standalone como booleano.', $realPath));
         }
         if (!is_string($description) || trim($description) === '') {
             throw new MigrationException(sprintf('La migración %s no tiene una descripción válida.', $realPath));
@@ -563,6 +577,7 @@ final class MigrationRunner
             'accepted_checksums' => $sums['accepted'],
             'transactional' => $transactional,
             'retry_safe' => $retrySafe,
+            'standalone' => $standalone,
             'statements' => $normalized,
             'preflight' => $normalizedPreflight,
         ];

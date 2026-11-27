@@ -247,6 +247,9 @@ try {
 
     if ($command === 'recover') {
         $migrationId = trim($options['migration'] ?? '');
+        if (array_key_exists('migration', $options) && $migrationId === '') {
+            throw new MigrationException('El identificador de migración no puede estar vacío.');
+        }
         if ($migrationId === '') {
             throw new MigrationException('Falta el parámetro obligatorio --migration=<id> para recover.');
         }
@@ -275,7 +278,8 @@ try {
         exit(0);
     }
 
-    $executed = $runner->migrate();
+    $migrationId = trim($options['migration'] ?? '');
+    $executed = $runner->migrate($migrationId === '' ? null : $migrationId);
     if ($executed === []) {
         fwrite(STDOUT, "No hay migraciones pendientes." . PHP_EOL);
         exit(0);

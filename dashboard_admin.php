@@ -352,7 +352,8 @@ $groupOpen = $sectionRole !== null;
                     <div class="tc-actions">
                         <a href="dashboard_admin.php?seccion=instructores"><i class="fa-solid fa-chalkboard-user" aria-hidden="true"></i><span>Crear instructor</span></a>
                         <a href="dashboard_admin.php?seccion=secretaria"><i class="fa-solid fa-headset" aria-hidden="true"></i><span>Crear secretaría</span></a>
-                        <a href="dashboard_admin.php?seccion=alumnos"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Consultar alumnos</span></a>
+                        <a href="modulos/alumnos/lista.php"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Consultar alumnos</span></a>
+                        <a href="historial_pagos.php"><i class="fa-solid fa-receipt" aria-hidden="true"></i><span>Historial de pagos</span></a>
                         <a href="registrar_pago.php"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i><span>Registrar pago</span></a>
                         <a href="registrar_pago.php?metodo=Transferencia#caja"><i class="fa-solid fa-building-columns" aria-hidden="true"></i><span>Registrar transferencia</span></a>
                         <a href="generar_cargos.php#lote"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>Generar cargos</span></a>
@@ -392,16 +393,18 @@ $groupOpen = $sectionRole !== null;
                 <?php endif; ?>
             </section>
         <?php else: ?>
-            <section class="tc-page-head">
+            <section class="tc-page-head tc-page-head-actions">
                 <div>
                     <span class="tc-eyebrow">ADMINISTRACIÓN</span>
                     <h1><?= $escape($pageTitle) ?></h1>
                     <p><?= number_format(count($rows)) ?> cuenta(s) registradas</p>
                 </div>
+                <a class="admin-cancel" href="dashboard_admin.php"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver al dashboard</a>
             </section>
 
             <?php if ($editing !== null): ?>
                 <section class="admin-users">
+                    <?php if ($isStudents): ?><p><a href="modulos/alumnos/lista.php">Búsqueda avanzada de alumnos</a></p><?php endif; ?>
                     <div class="admin-users-heading">
                         <div>
                             <h2>Editar cuenta #<?= $escape($editing['id_usuario']) ?></h2>
@@ -423,7 +426,10 @@ $groupOpen = $sectionRole !== null;
                         <?php else: ?>
                             <p class="admin-hint">Los datos personales de esta cuenta estarán disponibles al aplicar la migración 20261120_006.</p>
                         <?php endif; ?>
-                        <button type="submit" class="admin-save">Guardar cambios</button>
+                        <div class="admin-user-actions">
+                            <button type="submit" class="admin-save">Guardar cambios</button>
+                            <a class="admin-cancel" href="dashboard_admin.php?seccion=<?= $escape($section) ?>">Cancelar edición</a>
+                        </div>
                     </form>
                     <form method="post" action="dashboard_admin.php" class="admin-account-form">
                         <input type="hidden" name="csrf_token" value="<?= $escape($csrfToken) ?>">
@@ -459,6 +465,7 @@ $groupOpen = $sectionRole !== null;
             <section class="admin-users">
                 <?php if ($isStudents): ?>
                     <p class="admin-hint admin-section-note">Los alumnos se registran desde el registro público; aquí puedes consultar y editar sus datos.</p>
+                    <p class="admin-section-note"><a class="tc-btn tc-btn-small" href="modulos/alumnos/lista.php">Buscar alumnos y asignar cinturones</a></p>
                 <?php elseif (!$roleAvailable): ?>
                     <p class="admin-hint admin-section-note">La base de datos aún no admite este rol. Se habilitará al aplicar las migraciones del esquema (requiere autorización).</p>
                 <?php else: ?>
@@ -518,6 +525,9 @@ $groupOpen = $sectionRole !== null;
                                     <td data-label="Acciones">
                                         <div class="admin-user-actions">
                                             <a class="admin-save" href="dashboard_admin.php?seccion=<?= $escape($section) ?>&amp;editar=<?= $escape($user['id_usuario']) ?>">Ver / editar</a>
+                                            <?php if ($isStudents && $user['id_alumno'] !== null): ?>
+                                                <a class="tc-btn tc-btn-small" href="modulos/alumnos/cinturon.php?id=<?= (int) $user['id_alumno'] ?>&amp;origen=cuentas">Asignar cinturón</a>
+                                            <?php endif; ?>
                                             <form method="post" action="dashboard_admin.php">
                                                 <input type="hidden" name="csrf_token" value="<?= $escape($csrfToken) ?>">
                                                 <input type="hidden" name="action" value="set_active">

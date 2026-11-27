@@ -6,9 +6,8 @@
 -- aplicar las migraciones 20261118_001 ... 20261126_010. Úsalo solo
 -- para una instalación nueva, sin datos previos.
 --
--- Si ya tienes una base con alumnos, pagos, etc., NO uses este archivo:
--- sigue la guía "Actualizar una instalación existente sin perder datos"
--- del README.md y usa `php migrate.php`.
+-- Si ya tienes una base con alumnos, pagos, etc., NO uses este archivo.
+-- Consulta las advertencias de migración del README antes de actualizar.
 --
 -- Requisitos: MariaDB 10.11+ (o compatible), PHP 8+, pdo_mysql.
 --
@@ -99,6 +98,7 @@ CREATE TABLE `usuarios` (
 CREATE TABLE `clases` (
     `id_clase` INT(20) NOT NULL AUTO_INCREMENT,
     `nombre_clase` VARCHAR(100) NOT NULL,
+    `categoria` ENUM('infantil','adulta') NULL,
     `id_profesor` INT(20) NOT NULL,
     `dias` VARCHAR(50) NOT NULL,
     `hora_inicio` TIME NOT NULL,
@@ -114,7 +114,7 @@ CREATE TABLE `inscripciones_clases` (
     `id_inscripcion` INT(20) NOT NULL AUTO_INCREMENT,
     `id_alumno` INT(20) NOT NULL,
     `id_clase` INT(20) NOT NULL,
-    `estado` ENUM('pendiente','aceptada','rechazada') NOT NULL DEFAULT 'pendiente',
+    `estado` ENUM('pendiente','aceptada','rechazada','cancelada') NOT NULL DEFAULT 'pendiente',
     `fecha_solicitud` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `fecha_resolucion` DATETIME DEFAULT NULL,
     `revisado_por_profesor` INT(20) DEFAULT NULL,
@@ -210,7 +210,7 @@ CREATE TABLE `cargos_mensuales` (
     `estado` ENUM('pendiente','pagado','vencido') NOT NULL DEFAULT 'pendiente',
     `generado_en` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `id_usuario_generador` INT(20) NOT NULL,
-    `clave_mensualidad` VARCHAR(32) GENERATED ALWAYS AS (IF(`concepto` = 'mensualidad', CONCAT(`id_alumno`, '-', `periodo`), NULL)) PERSISTENT,
+    `clave_mensualidad` VARCHAR(32) GENERATED ALWAYS AS (IF(`concepto` = 'mensualidad', CONCAT(`id_alumno`, '-', RTRIM(`periodo`)), NULL)) PERSISTENT,
     PRIMARY KEY (`id_cargo`),
     UNIQUE KEY `uq_cargo_mensualidad` (`clave_mensualidad`),
     KEY `idx_cargo_alumno_periodo` (`id_alumno`,`periodo`),
@@ -219,7 +219,7 @@ CREATE TABLE `cargos_mensuales` (
     KEY `idx_cargos_vencimiento` (`fecha_vencimiento`,`estado`),
     CONSTRAINT `chk_cargo_periodo` CHECK (`periodo` REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'),
     CONSTRAINT `chk_cargo_importes` CHECK (`importe_tarifa` > 0 AND `porcentaje` > 0 AND `porcentaje` <= 100 AND `importe` > 0),
-    CONSTRAINT `fk_cargo_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT `fk_cargo_alumno` FOREIGN KEY (`id_alumno`) REFERENCES `alumnos` (`id_alumno`) ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT `fk_cargo_tarifa` FOREIGN KEY (`id_tarifa`) REFERENCES `tarifas_mensuales` (`id_tarifa`) ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT `fk_cargo_usuario` FOREIGN KEY (`id_usuario_generador`) REFERENCES `usuarios` (`id_usuario`) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
@@ -379,14 +379,11 @@ CREATE TABLE `migraciones_estado` (
 -- checksum de cada migración depende del contenido exacto del archivo .php
 -- en disco (ver core/MigrationRunner.php). Si insertas aquí un checksum
 -- que no coincide con tus archivos reales, `migrate.php status` marcará
--- "checksum_mismatch". La forma correcta de dejar esto reconciliado es
--- ejecutar, una sola vez, justo después de importar este archivo:
+-- "checksum_mismatch".
 --
---   php migrate.php init   --target-db=escuela --env-id=<tu-env> --confirm-write=YES
---   php migrate.php up     --target-db=escuela --env-id=<tu-env> --confirm-write=YES
---
--- Como las tablas ya existen y todas las sentencias usan IF NOT EXISTS,
--- esto no falla: solo registra las 10 migraciones como ejecutadas.
+-- ADVERTENCIA: no ejecutes up sin seleccionar una migración. La migración 002
+-- intenta crear claves foráneas existentes y falla en MariaDB 10.11. Consulta
+-- en el README cómo ejecutar individualmente la migración 011.
 
 -- ---------------------------------------------------------------------
 -- Datos semilla mínimos (catálogo de cinturones, tarifas vigentes,

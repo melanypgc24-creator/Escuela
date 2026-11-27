@@ -6,6 +6,7 @@ namespace App\Controllers;
 use App\Core\JsonResponse;
 use App\Core\Request;
 use App\Models\StudentModel;
+use InvalidArgumentException;
 use PDOException;
 
 final class StudentController
@@ -16,25 +17,91 @@ final class StudentController
 
     public function index(): void
     {
-        $page = filter_var($_GET['pagina'] ?? 1, FILTER_VALIDATE_INT);
-        $perPage = filter_var($_GET['por_pagina'] ?? 25, FILTER_VALIDATE_INT);
-        if ($page === false || $perPage === false) {
-            JsonResponse::send(['error' => 'Los parámetros de paginación deben ser enteros.'], 422);
-            return;
+        try {
+            [$filters, $page, $perPage] = self::searchParameters($_GET);
+            JsonResponse::send($this->students->all($filters, $page, $perPage));
+        } catch (InvalidArgumentException $exception) {
+            JsonResponse::send(['error' => $exception->getMessage()], 422);
         }
-        $classId = isset($_GET['id_clase']) ? filter_var($_GET['id_clase'], FILTER_VALIDATE_INT) : null;
-        if ($classId === false || ($classId !== null && $classId < 0)) {
-            JsonResponse::send(['error' => 'El identificador de clase debe ser un entero no negativo.'], 422);
-            return;
+    }
+
+    public static function searchParameters(array $input, bool $assignedOnly = false): array
+    {
+        $filters = [];
+        foreach (['q', 'cinturon'] as $name) {
+            if (isset($input[$name]) && (!is_string($input[$name]) || mb_strlen($input[$name], 'UTF-8') > 100)) {
+                throw new InvalidArgumentException('El texto de búsqueda no es válido.');
+            }
+            if (isset($input[$name]) && trim($input[$name]) !== '') {
+                $filters[$name] = trim($input[$name]);
+            }
         }
-        JsonResponse::send($this->students->all([
-            'q' => is_string($_GET['q'] ?? null) ? $_GET['q'] : '',
-            'estatus' => is_string($_GET['estatus'] ?? null) ? $_GET['estatus'] : null,
-            'categoria' => is_string($_GET['categoria'] ?? null) ? $_GET['categoria'] : null,
-            'cinturon' => is_string($_GET['cinturon'] ?? null) ? $_GET['cinturon'] : null,
-            'id_clase' => $classId,
-            'estado_pago' => is_string($_GET['estado_pago'] ?? null) ? $_GET['estado_pago'] : null,
-        ], $page, $perPage));
+        foreach (['estatus' => ['activo', 'inactivo'], 'categoria' => ['infantil', 'adulta'],
+                     'estado_pago' => ['sin_cargos', 'al_corriente', 'pagado', 'pendiente', 'parcial', 'vencido']] as $name => $values) {
+            $value = $input[$name] ?? '';
+            if (!is_string($value) || ($value !== '' && !in_array($value, $values, true))
+                || ($assignedOnly && $name === 'estado_pago' && $value !== '')) {
+                throw new InvalidArgumentException('El filtro seleccionado no es válido.');
+            }
+            if ($value !== '') {
+                $filters[$name] = $value;
+            }
+        }
+        foreach (['id_clase', 'id_cinturon'] as $name) {
+            $value = $input[$name] ?? '';
+            if ($value !== '') {
+                $id = filter_var($value, FILTER_VALIDATE_INT);
+                if ($id === false || $id < 1) {
+                    throw new InvalidArgumentException('El identificador seleccionado no es válido.');
+                }
+                $filters[$name] = $id;
+            }
+        }
+        $page = filter_var($input['pagina'] ?? 1, FILTER_VALIDATE_INT);
+        $perPage = filter_var($input['por_pagina'] ?? 25, FILTER_VALIDATE_INT);
+        if ($page === false || $page < 1 || $page > 1000000 || $perPage === false || $perPage < 1 || $perPage > 100) {
+            throw new InvalidArgumentException('Los parámetros de paginación no son válidos.');
+        }
+        return [$filters, $page, $perPage];
+    }
+
+    public static function validateOwnProfile(array $input): array
+    {
+        $name = $input['nombre'] ?? null;
+        $surname = $input['apellidos'] ?? null;
+        $phone = $input['telefono'] ?? null;
+        $birthDate = $input['fecha_nacimiento'] ?? null;
+        $email = $input['correo_contacto'] ?? null;
+        $address = $input['direccion'] ?? null;
+
+        if (!is_string($name) || trim($name) === '' || mb_strlen(trim($name), 'UTF-8') > 100
+            || !is_string($surname) || trim($surname) === '' || mb_strlen(trim($surname), 'UTF-8') > 100) {
+            throw new InvalidArgumentException('Escribe nombre y apellidos de hasta 100 caracteres.');
+        }
+        if (!is_string($phone) || mb_strlen(trim($phone), 'UTF-8') > 20
+            || preg_match('/^\+?[0-9][0-9 ().-]*$/D', trim($phone)) !== 1
+            || strlen(preg_replace('/\D/', '', $phone)) < 7
+            || strlen(preg_replace('/\D/', '', $phone)) > 15) {
+            throw new InvalidArgumentException('Escribe un teléfono válido con entre 7 y 15 dígitos.');
+        }
+        if (!is_string($birthDate) || !Request::isValidBirthDate($birthDate)) {
+            throw new InvalidArgumentException('Selecciona una fecha de nacimiento válida.');
+        }
+        if (!is_string($email) || (trim($email) !== '' && (strlen(trim($email)) > 150
+            || !filter_var(trim($email), FILTER_VALIDATE_EMAIL)))) {
+            throw new InvalidArgumentException('Escribe un correo de contacto válido.');
+        }
+        if (!is_string($address) || mb_strlen(trim($address), 'UTF-8') > 255) {
+            throw new InvalidArgumentException('La dirección debe tener hasta 255 caracteres.');
+        }
+        return [
+            'nombre' => trim($name),
+            'apellidos' => trim($surname),
+            'telefono' => trim($phone),
+            'fecha_nacimiento' => $birthDate,
+            'correo_contacto' => trim($email) === '' ? null : trim($email),
+            'direccion' => trim($address) === '' ? null : trim($address),
+        ];
     }
 
     public function mine(): void
@@ -59,7 +126,17 @@ final class StudentController
             JsonResponse::send(['error' => 'La cuenta de maestro no está vinculada a un profesor.'], 403);
             return;
         }
-        JsonResponse::send(['data' => $this->students->allForProfessor($professorId)]);
+        $searchKeys = ['q', 'cinturon', 'estatus', 'categoria', 'estado_pago', 'id_clase', 'id_cinturon', 'pagina', 'por_pagina'];
+        if (array_intersect($searchKeys, array_keys($_GET)) === []) {
+            JsonResponse::send(['data' => $this->students->allForProfessor($professorId)]);
+            return;
+        }
+        try {
+            [$filters, $page, $perPage] = self::searchParameters($_GET, true);
+            JsonResponse::send($this->students->all($filters, $page, $perPage, $professorId));
+        } catch (InvalidArgumentException $exception) {
+            JsonResponse::send(['error' => $exception->getMessage()], 422);
+        }
     }
 
     public function show(array $params): void
@@ -79,10 +156,6 @@ final class StudentController
             return;
         }
         try {
-            if (($_SESSION['rol'] ?? null) === 'recepcionista') {
-                $data['estatus'] = 1;
-                $data['categoria'] = null;
-            }
             $id = $this->students->create($data, (int) $_SESSION['id_usuario']);
             JsonResponse::send(['data' => $this->students->find($id)], 201);
         } catch (PDOException $exception) {
@@ -106,11 +179,6 @@ final class StudentController
             return;
         }
         try {
-            if (($_SESSION['rol'] ?? null) === 'recepcionista') {
-                $current = $this->students->find($id);
-                $data['estatus'] = (int) $current['estatus'];
-                $data['categoria'] = $current['categoria'];
-            }
             $this->students->update($id, $data, (int) $_SESSION['id_usuario']);
             JsonResponse::send(['data' => $this->students->find($id)]);
         } catch (PDOException $exception) {
@@ -136,6 +204,12 @@ final class StudentController
         $input = Request::json();
         if ($input === null) {
             JsonResponse::send(['error' => 'El cuerpo debe ser JSON válido.'], 400);
+            return null;
+        }
+
+        if (array_key_exists('id_cinturon', $input)
+            && !\App\Core\Permissions::allows((string) ($_SESSION['rol'] ?? ''), 'students.belt_all')) {
+            JsonResponse::send(['error' => 'No tienes permiso para modificar el cinturón.'], 403);
             return null;
         }
 

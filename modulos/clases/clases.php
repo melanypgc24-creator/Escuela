@@ -29,6 +29,7 @@ try {
     $stmt = $conexion->query(
         'SELECT c.id_clase,
                 c.nombre_clase,
+                c.categoria,
                 c.id_profesor,
                 c.dias,
                 c.hora_inicio,
@@ -83,6 +84,7 @@ $csrfToken = $escape(csrf_token());
                 <h2>Clases registradas</h2>
                 <div class="role-dashboard-actions">
                     <a href="crear_cl.php">Crear clase</a>
+                    <a class="admin-cancel" href="<?= ($_SESSION['rol'] ?? '') === 'director' ? '../../dashboard_director.php' : '../../dashboard_admin.php' ?>">Volver al panel</a>
                 </div>
             </div>
 
@@ -103,6 +105,7 @@ $csrfToken = $escape(csrf_token());
                             <thead>
                                 <tr>
                                     <th>Clase</th>
+                                    <th>Categoría</th>
                                     <th>Profesor</th>
                                     <th>Días</th>
                                     <th>Horario</th>
@@ -123,6 +126,7 @@ $csrfToken = $escape(csrf_token());
                                     ?>
                                     <tr>
                                         <td data-label="Clase"><strong><?= $escape($nombreClaseStr) ?></strong></td>
+                                        <td data-label="Categoría"><?= $escape($clase['categoria'] === null ? 'Sin asignar' : ucfirst($clase['categoria'])) ?></td>
                                         <td data-label="Profesor"><?= $escape($profNombre) ?></td>
                                         <td data-label="Días"><?= $escape($clase['dias'] ?? '') ?></td>
                                         <td data-label="Horario"><?= $escape($time($clase['hora_inicio'] ?? '') . ' - ' . $time($clase['hora_fin'] ?? '')) ?></td>

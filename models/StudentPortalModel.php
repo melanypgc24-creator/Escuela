@@ -30,8 +30,9 @@ final class StudentPortalModel
     public function profile(int $studentId): ?array
     {
         return $this->guard('perfil', null, function () use ($studentId): ?array {
-            $select = ['a.id_alumno', 'a.nombre', 'a.apellidos', 'a.telefono', 'a.fecha_nacimiento', 'a.estatus', 'a.id_cinturon'];
-            foreach (['matricula', 'correo_contacto', 'categoria', 'fecha_ingreso'] as $optional) {
+            $select = ['a.id_alumno', 'a.nombre', 'a.apellidos', 'a.telefono', 'a.fecha_nacimiento', 'a.estatus', 'a.id_cinturon',
+                ClassCategoryModel::studentCategorySql('a') . ' AS categoria_clases'];
+            foreach (['matricula', 'correo_contacto', 'direccion', 'categoria', 'fecha_ingreso'] as $optional) {
                 if ($this->hasColumn('alumnos', $optional)) {
                     $select[] = 'a.' . $optional;
                 }

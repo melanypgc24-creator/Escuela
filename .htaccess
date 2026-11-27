@@ -8,7 +8,7 @@ RewriteRule (^|/)\.(?!well-known) - [F,L]
 RewriteRule \.sql$ - [F,L]
 
 # Bloquea las carpetas de código que no deben servirse directamente
-RewriteRule ^(?:config|controllers|core|database|includes|middleware|models|routes|views)(?:/|$) - [F,L]
+RewriteRule ^(?:config|controllers|core|database|includes|middleware|models|routes|views|vendor)(?:/|$) - [F,L]
 
 # Bloquea archivos sueltos sensibles en la raíz
 RewriteRule ^(?:bootstrap\.php|README\.md|migrate\.php|generar_cargos_cli\.php|composer\.json|composer\.lock)$ - [F,L]

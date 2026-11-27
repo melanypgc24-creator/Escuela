@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+date_default_timezone_set('America/Matamoros');
+
 spl_autoload_register(static function (string $class): void {
     $prefix = 'App\\';
     if (strncmp($class, $prefix, strlen($prefix)) !== 0) {

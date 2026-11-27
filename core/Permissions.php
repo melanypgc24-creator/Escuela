@@ -15,10 +15,10 @@ final class Permissions
         ],
         'maestro' => [
             'students.read_assigned', 'classes.read_assigned', 'attendance.read_assigned',
-            'attendance.write_assigned', 'notifications.read_own', 'notifications.mark_own', 'enrollments.read_assigned',
+            'attendance.write_assigned', 'students.belt_assigned', 'notifications.read_own', 'notifications.mark_own', 'enrollments.read_assigned',
         ],
         'recepcionista' => [
-            'students.read', 'students.write', 'professors.read', 'classes.read',
+            'students.read', 'professors.read', 'classes.read',
             'tariffs.read', 'payments.read', 'payments.create', 'debts.read',
             'private_classes.read', 'private_classes.create', 'reports.operational', 'reports.read',
             'enrollments.read',

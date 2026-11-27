@@ -6,6 +6,25 @@ require_permission('classes.read_assigned');
 
 header('Cache-Control: no-store');
 
+$sections = [
+    'resumen' => 'Panel de instructor',
+    'asistencia' => 'Pasar asistencia',
+    'solicitudes' => 'Solicitudes de inscripción',
+    'clases' => 'Mis clases',
+    'alumnos' => 'Alumnos asignados',
+];
+$section = $_GET['seccion'] ?? null;
+if ($section === null) {
+    $action = $_POST['accion'] ?? '';
+    $section = $action === 'guardar_asistencia' || isset($_GET['clase_id']) || isset($_GET['fecha'])
+        ? 'asistencia'
+        : (in_array($action, ['aceptar_solicitud', 'rechazar_solicitud'], true) ? 'solicitudes' : 'resumen');
+}
+if (!is_string($section) || !isset($sections[$section])) {
+    http_response_code(400);
+    exit('La sección solicitada no es válida.');
+}
+
 $professorId = $_SESSION['id_profesor'] ?? null;
 $classes = [];
 $students = [];
@@ -20,6 +39,11 @@ $requestError = null;
 $attendanceSuccess = null;
 $attendanceError = null;
 $sectionWarnings = [];
+$beltMessage = null;
+if ($section === 'alumnos') {
+    $beltMessage = $_SESSION['flash_cinturon'] ?? null;
+    unset($_SESSION['flash_cinturon']);
+}
 
 $isValidDate = static fn (string $value): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
     && strtotime($value) !== false;
@@ -89,6 +113,7 @@ if (!is_int($professorId)) {
                         $requestError = 'Esta solicitud ya fue revisada anteriormente.';
                     } else {
                         if ($decision === 'aceptada') {
+                            (new \App\Models\ClassCategoryModel($pdo))->requireCompatible((int) $reqRow['id_clase'], (int) $reqRow['id_alumno']);
                             $capStmt = $pdo->prepare(
                                 'SELECT COUNT(*) FROM inscripciones_clases
                                  WHERE id_clase = :id_clase AND estado = "aceptada"'
@@ -131,6 +156,11 @@ if (!is_int($professorId)) {
                                 : 'Solicitud rechazada.';
                         }
                     }
+                } catch (\DomainException $txException) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $requestError = $txException->getMessage();
                 } catch (\Throwable $txException) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -335,6 +365,22 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
     <title>Panel de maestro | Team Cats</title>
     <link rel="stylesheet" href="css/estilos.css?v=<?= (int) filemtime(__DIR__ . '/css/estilos.css') ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <?php if ($section === 'resumen' && !isset($_GET['seccion']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'): ?>
+        <script>
+            const previousSections = {
+                '#pasar-asistencia': 'asistencia',
+                '#solicitudes-inscripcion': 'solicitudes',
+                '#mis-clases': 'clases',
+                '#alumnos-asignados': 'alumnos'
+            };
+            if (Object.prototype.hasOwnProperty.call(previousSections, window.location.hash)) {
+                const destination = new URL(window.location.href);
+                destination.searchParams.set('seccion', previousSections[window.location.hash]);
+                destination.hash = '';
+                window.location.replace(destination.href);
+            }
+        </script>
+    <?php endif; ?>
 </head>
 <body class="tc-body tc-collapsed">
     <div class="tc-topbar">
@@ -361,12 +407,12 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
         </a>
         <ul class="tc-menu" aria-label="Secciones de instructor">
             <li>
-                <a class="tc-link is-active" href="#resumen" aria-current="page">
+                <a class="tc-link<?= $section === 'resumen' ? ' is-active' : '' ?>" href="panel_maestro.php"<?= $section === 'resumen' ? ' aria-current="page"' : '' ?>>
                     <i class="fa-solid fa-house" aria-hidden="true"></i>Mis grupos
                 </a>
             </li>
             <li>
-                <a class="tc-link" href="#pasar-asistencia">
+                <a class="tc-link<?= $section === 'asistencia' ? ' is-active' : '' ?>" href="panel_maestro.php?seccion=asistencia"<?= $section === 'asistencia' ? ' aria-current="page"' : '' ?>>
                     <i class="fa-solid fa-user-check" aria-hidden="true"></i>Pasar asistencia
                 </a>
             </li>
@@ -376,7 +422,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                 </a>
             </li>
             <li>
-                <a class="tc-link" href="#solicitudes-inscripcion">
+                <a class="tc-link<?= $section === 'solicitudes' ? ' is-active' : '' ?>" href="panel_maestro.php?seccion=solicitudes"<?= $section === 'solicitudes' ? ' aria-current="page"' : '' ?>>
                     <i class="fa-solid fa-user-plus" aria-hidden="true"></i>Solicitudes
                     <?php if ($pendingRequests !== []): ?>
                         <span class="tc-count tc-count-alert"><?= count($pendingRequests) > 9 ? '9+' : count($pendingRequests) ?></span>
@@ -384,12 +430,12 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                 </a>
             </li>
             <li>
-                <a class="tc-link" href="#mis-clases">
+                <a class="tc-link<?= $section === 'clases' ? ' is-active' : '' ?>" href="panel_maestro.php?seccion=clases"<?= $section === 'clases' ? ' aria-current="page"' : '' ?>>
                     <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Mis clases
                 </a>
             </li>
             <li>
-                <a class="tc-link" href="#alumnos-asignados">
+                <a class="tc-link<?= $section === 'alumnos' ? ' is-active' : '' ?>" href="panel_maestro.php?seccion=alumnos"<?= $section === 'alumnos' ? ' aria-current="page"' : '' ?>>
                     <i class="fa-solid fa-users" aria-hidden="true"></i>Alumnos asignados
                 </a>
             </li>
@@ -402,17 +448,27 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
         <main class="tc-content" id="resumen">
             <p class="tc-breadcrumb">
                 <a href="panel_maestro.php">Instructor</a>
-                <i class="fa-solid fa-angle-right" aria-hidden="true"></i><span>Mis grupos</span>
+                <i class="fa-solid fa-angle-right" aria-hidden="true"></i><span><?= $escape($sections[$section]) ?></span>
             </p>
 
-            <section class="tc-welcome">
-                <div>
-                    <span class="tc-eyebrow">TEAM CATS · INSTRUCTOR</span>
-                    <h1>Panel de instructor</h1>
-                    <p>Clases, pase de lista, solicitudes de inscripción y alumnos de tus grupos.</p>
-                </div>
-                <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
-            </section>
+            <?php if ($section === 'resumen'): ?>
+                <section class="tc-welcome">
+                    <div>
+                        <span class="tc-eyebrow">TEAM CATS · INSTRUCTOR</span>
+                        <h1>Panel de instructor</h1>
+                        <p>Clases, pase de lista, solicitudes de inscripción y alumnos de tus grupos.</p>
+                    </div>
+                    <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+                </section>
+            <?php else: ?>
+                <section class="tc-page-head tc-page-head-actions">
+                    <div>
+                        <span class="tc-eyebrow">INSTRUCTOR</span>
+                        <h1><?= $escape($sections[$section]) ?></h1>
+                    </div>
+                    <a class="admin-cancel" href="panel_maestro.php"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver al panel</a>
+                </section>
+            <?php endif; ?>
 
             <?php if (is_string($warning)): ?>
                 <p class="auth-error admin-message" role="alert"><?= $escape($warning) ?></p>
@@ -437,6 +493,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                     <p class="auth-error admin-message" role="alert"><?= $escape($sectionWarning) ?></p>
                 <?php endforeach; ?>
 
+                <?php if ($section === 'resumen'): ?>
                 <section class="tc-metrics tc-metrics-3" aria-label="Resumen de actividad">
                     <article class="tc-metric">
                         <span class="tc-metric-icon"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i></span>
@@ -455,6 +512,21 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                     </article>
                 </section>
 
+                <section class="tc-panel">
+                    <div class="tc-panel-head">
+                        <div><span class="tc-eyebrow">ACCESOS RÁPIDOS</span><h2>Acciones frecuentes</h2></div>
+                    </div>
+                    <div class="tc-actions">
+                        <a href="panel_maestro.php?seccion=asistencia"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>Pasar asistencia</span></a>
+                        <a href="panel_maestro.php?seccion=solicitudes"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Solicitudes de inscripción</span></a>
+                        <a href="panel_maestro.php?seccion=clases"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Mis clases</span></a>
+                        <a href="panel_maestro.php?seccion=alumnos"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Alumnos y cinturones</span></a>
+                        <a href="modulos/asistencias/historial_asistencias.php"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span>Historial de asistencia</span></a>
+                    </div>
+                </section>
+                <?php endif; ?>
+
+                <?php if ($section === 'asistencia'): ?>
                 <section class="tc-panel" id="pasar-asistencia">
                     <div class="tc-panel-head">
                         <div>
@@ -467,7 +539,8 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                     <?php if ($classes === []): ?>
                         <div class="tc-empty"><span>No tienes clases asignadas para registrar asistencia.</span></div>
                     <?php else: ?>
-                        <form method="get" action="panel_maestro.php#pasar-asistencia" class="class-create-form" style="margin-bottom: 18px;">
+                        <form method="get" action="panel_maestro.php" class="class-create-form" style="margin-bottom: 18px;">
+                            <input type="hidden" name="seccion" value="asistencia">
                             <label for="clase_id">Clase</label>
                             <select id="clase_id" name="clase_id" onchange="this.form.submit()">
                                 <?php foreach ($classes as $cls): ?>
@@ -488,7 +561,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         <?php if ($classRoster === []): ?>
                             <div class="tc-empty"><span>No hay alumnos inscritos o aceptados en esta clase.</span></div>
                         <?php else: ?>
-                            <form method="post" action="panel_maestro.php?clase_id=<?= $escape((string) $selectedClassId) ?>&amp;fecha=<?= $escape($selectedDate) ?>#pasar-asistencia">
+                            <form method="post" action="panel_maestro.php?seccion=asistencia&amp;clase_id=<?= $escape((string) $selectedClassId) ?>&amp;fecha=<?= $escape($selectedDate) ?>">
                                 <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                                 <input type="hidden" name="accion" value="guardar_asistencia">
                                 <input type="hidden" name="id_clase" value="<?= $escape((string) $selectedClassId) ?>">
@@ -546,7 +619,9 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         <?php endif; ?>
                     <?php endif; ?>
                 </section>
+                <?php endif; ?>
 
+                <?php if ($section === 'solicitudes'): ?>
                 <section class="tc-panel" id="solicitudes-inscripcion">
                     <div class="tc-panel-head">
                         <div>
@@ -591,13 +666,13 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                                             <td data-label="Solicitado"><?= $escape($dateTime($req['fecha_solicitud'] ?? '')) ?></td>
                                             <td data-label="Acciones">
                                                 <div class="admin-user-actions">
-                                                    <form method="post" action="panel_maestro.php#solicitudes-inscripcion">
+                                                    <form method="post" action="panel_maestro.php?seccion=solicitudes">
                                                         <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                                                         <input type="hidden" name="accion" value="aceptar_solicitud">
                                                         <input type="hidden" name="id_inscripcion" value="<?= $escape($reqId) ?>">
                                                         <button type="submit" class="admin-save" <?= $sinCupo ? 'disabled' : '' ?>>Aceptar</button>
                                                     </form>
-                                                    <form method="post" action="panel_maestro.php#solicitudes-inscripcion">
+                                                    <form method="post" action="panel_maestro.php?seccion=solicitudes">
                                                         <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                                                         <input type="hidden" name="accion" value="rechazar_solicitud">
                                                         <input type="hidden" name="id_inscripcion" value="<?= $escape($reqId) ?>">
@@ -612,7 +687,9 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         </div>
                     <?php endif; ?>
                 </section>
+                <?php endif; ?>
 
+                <?php if ($section === 'clases'): ?>
                 <section class="tc-panel" id="mis-clases">
                     <div class="tc-panel-head">
                         <div>
@@ -625,11 +702,12 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                     <?php else: ?>
                         <div class="admin-table-wrap">
                             <table class="admin-table">
-                                <thead><tr><th>Clase</th><th>Días</th><th>Horario</th><th>Capacidad</th></tr></thead>
+                                <thead><tr><th>Clase</th><th>Categoría</th><th>Días</th><th>Horario</th><th>Capacidad</th></tr></thead>
                                 <tbody>
                                     <?php foreach ($classes as $class): ?>
                                         <tr>
                                             <td data-label="Clase"><?= $escape($class['nombre_clase'] ?? '') ?></td>
+                                            <td data-label="Categoría"><?= $escape(isset($class['categoria']) ? ucfirst($class['categoria']) : 'Sin asignar') ?></td>
                                             <td data-label="Días"><?= $escape($class['dias'] ?? '') ?></td>
                                             <td data-label="Horario"><?= $escape($time($class['hora_inicio'] ?? '') . ' - ' . $time($class['hora_fin'] ?? '')) ?></td>
                                             <td data-label="Capacidad"><?= $escape($class['capacidad'] ?? '') ?></td>
@@ -640,20 +718,29 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         </div>
                     <?php endif; ?>
                 </section>
+                <?php endif; ?>
 
+                <?php if ($section === 'alumnos'): ?>
                 <section class="tc-panel" id="alumnos-asignados">
                     <div class="tc-panel-head">
                         <div>
                             <span class="tc-eyebrow">ALUMNOS</span>
                             <h2>Alumnos asignados</h2>
                         </div>
+                        <a class="tc-btn tc-btn-small" href="modulos/alumnos/lista.php"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Buscar alumnos asignados</a>
                     </div>
+                    <?php if (is_string($beltMessage)): ?><p class="auth-success admin-message" role="status"><?= $escape($beltMessage) ?></p><?php endif; ?>
+                    <form method="get" action="modulos/alumnos/lista.php" class="admin-account-form">
+                        <label>Buscar alumno <input type="search" name="q" maxlength="100" placeholder="Nombre, matrícula o cinturón"></label>
+                        <label>Clase <select name="id_clase"><option value="">Todas mis clases</option><?php foreach ($classes as $class): ?><option value="<?= (int) $class['id_clase'] ?>"><?= $escape($class['nombre_clase']) ?></option><?php endforeach; ?></select></label>
+                        <button type="submit" class="admin-save">Buscar</button>
+                    </form>
                     <?php if ($students === []): ?>
                         <div class="tc-empty"><span>No hay alumnos inscritos en tus clases.</span></div>
                     <?php else: ?>
                         <div class="admin-table-wrap">
                             <table class="admin-table">
-                                <thead><tr><th>Matrícula</th><th>Nombre</th><th>Teléfono</th><th>Cinturón</th></tr></thead>
+                                <thead><tr><th>Matrícula</th><th>Nombre</th><th>Teléfono</th><th>Cinturón</th><th>Acciones</th></tr></thead>
                                 <tbody>
                                     <?php foreach ($students as $student): ?>
                                         <tr>
@@ -661,6 +748,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                                             <td data-label="Nombre"><?= $escape(($student['nombre'] ?? '') . ' ' . ($student['apellidos'] ?? '')) ?></td>
                                             <td data-label="Teléfono"><?= $escape($student['telefono'] ?? '') ?></td>
                                             <td data-label="Cinturón"><?= $escape($student['color_cinturon'] ?? 'Sin asignar') ?></td>
+                                            <td data-label="Acciones"><a class="tc-btn tc-btn-small" href="modulos/alumnos/cinturon.php?id=<?= (int) $student['id_alumno'] ?>&amp;origen=panel">Asignar cinturón</a></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -668,6 +756,7 @@ $dateTime = static fn (mixed $value): string => is_string($value) && $value !== 
                         </div>
                     <?php endif; ?>
                 </section>
+                <?php endif; ?>
             <?php endif; ?>
         </main>
         <footer class="tc-footer">Team Cats · Escuela de Jiu-Jitsu</footer>

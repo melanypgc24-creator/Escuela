@@ -199,6 +199,7 @@ function caja_procesar_pago(PDO $pdo, array $allowedMethods, string $redirectTo)
         $message .= ' ' . $cardNote;
     }
     $_SESSION['flash_pago'] = $message;
+    $_SESSION['flash_pago_id'] = $paymentId;
     header('Location: ' . $redirectTo);
     exit;
 }

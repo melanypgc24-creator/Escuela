@@ -295,8 +295,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     value="<?= htmlspecialchars((string) ($_POST['telefono'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
                 <label for="fecha_nacimiento">Fecha de nacimiento</label>
-                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required max="<?= date('Y-m-d') ?>"
+                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" required max="<?= date('Y-m-d') ?>" data-categoria-clases="categoria-clases" data-fecha-actual="<?= date('Y-m-d') ?>"
                     value="<?= htmlspecialchars((string) ($_POST['fecha_nacimiento'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                <small id="categoria-clases" aria-live="polite">Categoría para clases: pendiente de una fecha válida.</small>
 
                 <label for="correo">Correo electrónico</label>
                 <input id="correo" name="correo" type="text" inputmode="email" autocomplete="email"
@@ -353,5 +354,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         </section>
     </main>
     <script src="js/auth-validation.js?v=3" defer></script>
+    <script src="js/categoria-clases.js" defer></script>
 </body>
 </html>

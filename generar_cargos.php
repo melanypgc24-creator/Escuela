@@ -187,12 +187,13 @@ tc_shell_open([
     'breadcrumb' => [['Cargos mensuales', null]],
 ]);
 ?>
-        <section class="tc-page-head">
+        <section class="tc-page-head tc-page-head-actions">
             <div>
                 <span class="tc-eyebrow">ADMINISTRACIÓN</span>
                 <h1>Cargos mensuales</h1>
                 <p>Cada mes se cobra la mensualidad de los alumnos activos. Tú eliges el periodo y la fecha de vencimiento al crear el cargo.</p>
             </div>
+            <a class="admin-cancel" href="dashboard_admin.php"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver al dashboard</a>
         </section>
 
         <?php if ($error !== null): ?>

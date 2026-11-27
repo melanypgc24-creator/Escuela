@@ -26,6 +26,10 @@ $input = $_POST;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     require_valid_csrf();
+    if (!$isAdministrator && array_key_exists('id_cinturon', $input)) {
+        http_response_code(403);
+        exit('No tienes permiso para modificar el cinturón.');
+    }
     $nombre = $input['nombre'] ?? null;
     $apellidos = $input['apellidos'] ?? null;
     $telefono = $input['telefono'] ?? null;
@@ -33,7 +37,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $direccion = $input['direccion'] ?? '';
     $fechaNacimiento = $input['fecha_nacimiento'] ?? null;
     $fechaIngreso = $isAdministrator ? ($input['fecha_ingreso'] ?? null) : $alumno['fecha_ingreso'];
-    $cinturonValue = $input['id_cinturon'] ?? '';
+    $cinturonValue = $isAdministrator ? ($input['id_cinturon'] ?? '') : '';
     $cinturonId = $cinturonValue === '' ? null : filter_var($cinturonValue, FILTER_VALIDATE_INT);
     $estatus = $isAdministrator
         ? filter_var($input['estatus'] ?? null, FILTER_VALIDATE_INT)
@@ -54,7 +58,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $error = 'Revisa los datos del alumno.';
     } else {
         try {
-            $model->update($id, [
+            $data = [
                 'nombre' => trim($nombre),
                 'apellidos' => trim($apellidos),
                 'telefono' => trim($telefono),
@@ -64,8 +68,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'fecha_ingreso' => $fechaIngreso,
                 'estatus' => $estatus,
                 'categoria' => $categoria,
-                'id_cinturon' => $cinturonId,
-            ], (int) $_SESSION['id_usuario']);
+            ];
+            if ($isAdministrator) {
+                $data['id_cinturon'] = $cinturonId;
+            }
+            $model->update($id, $data, (int) $_SESSION['id_usuario']);
             header('Location: lista.php?actualizado=' . $id);
             exit;
         } catch (\PDOException $exception) {
@@ -80,8 +87,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-$stmt = $conexion->query('SELECT id_cinturon, color FROM cinturon ORDER BY color');
-$cinturones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$cinturones = $isAdministrator
+    ? $conexion->query('SELECT id_cinturon, color FROM cinturon ORDER BY color')->fetchAll(PDO::FETCH_ASSOC)
+    : [];
 $value = static fn (string $key): mixed => $input[$key] ?? $alumno[$key] ?? null;
 $escape = static fn (mixed $item): string => htmlspecialchars((string) ($item ?? ''), ENT_QUOTES, 'UTF-8');
 include dirname(__DIR__, 2) . '/includes/header.php';
@@ -107,17 +115,21 @@ include dirname(__DIR__, 2) . '/includes/header.php';
             <label for="fecha_ingreso">Fecha de ingreso</label>
             <input id="fecha_ingreso" name="fecha_ingreso" type="date" required value="<?= $escape($value('fecha_ingreso')) ?>">
         <?php endif; ?>
-        <label for="id_cinturon">Cinturón</label>
-        <select id="id_cinturon" name="id_cinturon">
-            <option value="">Sin asignar</option>
-            <?php foreach ($cinturones as $cinturon): ?>
-                <option value="<?= $escape($cinturon['id_cinturon']) ?>" <?= (string) $value('id_cinturon') === (string) $cinturon['id_cinturon'] ? 'selected' : '' ?>>
-                    <?= $escape($cinturon['color']) ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
         <?php if ($isAdministrator): ?>
-            <label for="categoria">Categoría</label>
+            <label for="id_cinturon">Cinturón</label>
+            <select id="id_cinturon" name="id_cinturon">
+                <option value="">Sin asignar</option>
+                <?php foreach ($cinturones as $cinturon): ?>
+                    <option value="<?= $escape($cinturon['id_cinturon']) ?>" <?= (string) $value('id_cinturon') === (string) $cinturon['id_cinturon'] ? 'selected' : '' ?>>
+                        <?= $escape($cinturon['color']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        <?php else: ?>
+            <p>Cinturón actual: <?= $escape($alumno['color_cinturon'] ?? 'Sin asignar') ?></p>
+        <?php endif; ?>
+        <?php if ($isAdministrator): ?>
+            <label for="categoria">Categoría para mensualidades</label>
             <select id="categoria" name="categoria">
                 <option value="">Sin clasificar</option>
                 <option value="infantil" <?= $value('categoria') === 'infantil' ? 'selected' : '' ?>>Infantil</option>
@@ -129,7 +141,10 @@ include dirname(__DIR__, 2) . '/includes/header.php';
                 <option value="0" <?= (string) $value('estatus') === '0' ? 'selected' : '' ?>>Inactivo</option>
             </select>
         <?php endif; ?>
-        <button type="submit">Guardar cambios</button>
+        <div class="admin-user-actions">
+            <button type="submit" class="admin-save">Guardar cambios</button>
+            <a class="admin-cancel" href="lista.php">Cancelar y volver a alumnos</a>
+        </div>
     </form>
 </main>
 <?php include dirname(__DIR__, 2) . '/includes/footer.php'; ?>

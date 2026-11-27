@@ -123,6 +123,7 @@ final class PrivateClassModel
             if ($paymentId < 1) {
                 throw new DomainException('La base de datos no devolvió un identificador de pago válido.');
             }
+            (new PaymentModel($this->db))->assignFolio($paymentId, substr($data['fecha_hora'], 0, 10));
 
             $history = $this->db->prepare(
                 'INSERT INTO historial_pagos
@@ -142,6 +143,7 @@ final class PrivateClassModel
                 $sessionId,
                 ['participantes' => count($participants), 'id_pago' => $paymentId]
             );
+            (new ReceiptModel($this->db))->capture($paymentId, (int) $data['id_usuario_registra']);
 
             $this->db->commit();
             return ['id_sesion' => $sessionId, 'id_pago' => $paymentId];

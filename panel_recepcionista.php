@@ -8,6 +8,31 @@ require __DIR__ . '/includes/panel_shell.php';
 
 header('Cache-Control: no-store');
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && (isset($_GET['metodo']) || isset($_GET['alumno']))) {
+    $params = [];
+    if (isset($_GET['metodo'])) {
+        $method = $_GET['metodo'];
+        if (!is_string($method) || !in_array($method, CAJA_METODOS, true)) {
+            http_response_code(400);
+            exit('El método de pago no es válido.');
+        }
+        $params['modo'] = $method === 'Transferencia' ? 'transferencia' : 'cobro';
+        $params['metodo'] = $method;
+    } else {
+        $params['modo'] = 'cobro';
+    }
+    if (isset($_GET['alumno'])) {
+        $studentId = filter_var($_GET['alumno'], FILTER_VALIDATE_INT);
+        if ($studentId === false || $studentId < 1) {
+            http_response_code(400);
+            exit('El identificador del alumno no es válido.');
+        }
+        $params['alumno'] = $studentId;
+    }
+    header('Location: registrar_pago.php?' . http_build_query($params));
+    exit;
+}
+
 $todayPayments = [];
 $references = [];
 $totalToday = '0.00';
@@ -18,19 +43,15 @@ $debtors = [];
 $charges = [];
 $error = null;
 $cajaError = null;
-$success = $_SESSION['flash_pago'] ?? null;
-unset($_SESSION['flash_pago']);
-$paymentMethods = CAJA_METODOS;
 $selected = null;
 
 try {
     $pdo = require __DIR__ . '/config/conexion.php';
     caja_actualizar_vencidos($pdo);
 
-    // El POST de la caja se procesa antes de cargar indicadores para que el panel ya muestre el pago nuevo.
-    $cajaError = caja_procesar_pago($pdo, $paymentMethods, 'panel_recepcionista.php#caja');
+    $cajaError = caja_procesar_pago($pdo, CAJA_METODOS, 'registrar_pago.php');
 
-    $selectedRaw = $_POST['id_alumno'] ?? $_GET['alumno'] ?? null;
+    $selectedRaw = $_POST['id_alumno'] ?? null;
     $selected = filter_var($selectedRaw, FILTER_VALIDATE_INT);
     $selected = $selected === false || $selected < 0 ? null : $selected;
     $students = caja_alumnos($pdo);
@@ -73,10 +94,10 @@ tc_shell_open([
     'role' => 'recepcionista',
     'active' => 'resumen',
     'csrf' => $csrfToken,
-    'css' => ['css/caja.css'],
+    'css' => $cajaError !== null ? ['css/caja.css'] : [],
 ]);
 ?>
-        <section class="tc-welcome">
+        <section class="tc-welcome" id="resumen">
             <div>
                 <span class="tc-eyebrow">TEAM CATS · SECRETARÍA</span>
                 <h1>Panel de secretaría / recepción</h1>
@@ -112,40 +133,34 @@ tc_shell_open([
             </article>
         </section>
 
-        <section class="tc-grid">
-            <div class="tc-panel" id="caja">
+        <?php if ($cajaError !== null): ?>
+            <section class="tc-panel">
                 <div class="tc-panel-head">
                     <div>
                         <span class="tc-eyebrow">CAJA</span>
                         <h2>Registrar pago</h2>
                     </div>
-                    <span class="tc-muted">Efectivo, transferencia o tarjeta (simulada)</span>
                 </div>
-                <?php if ($cajaError !== null): ?>
-                    <p class="auth-error admin-message" role="alert"><?= tc_e($cajaError) ?></p>
-                <?php elseif (is_string($success)): ?>
-                    <p class="auth-success admin-message" role="status"><?= tc_e($success) ?></p>
-                <?php endif; ?>
+                <p class="auth-error admin-message" role="alert"><?= tc_e($cajaError) ?></p>
                 <?php if ($students === []): ?>
                     <div class="tc-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>No hay alumnos activos para cobrar.</span></div>
                 <?php else: ?>
-                    <?php caja_render_formulario($students, $paymentMethods, $_POST, $csrfToken, 'panel_recepcionista.php#caja', $selected, $charges); ?>
+                    <?php caja_render_formulario($students, CAJA_METODOS, $_POST, $csrfToken, 'registrar_pago.php', $selected, $charges); ?>
                 <?php endif; ?>
-            </div>
+            </section>
+        <?php endif; ?>
 
-            <div class="tc-panel">
-                <div class="tc-panel-head">
-                    <div>
-                        <span class="tc-eyebrow">ACCESOS RÁPIDOS</span>
-                        <h2>Acciones frecuentes</h2>
-                    </div>
+        <section class="tc-panel" id="caja">
+            <div class="tc-panel-head">
+                <div>
+                    <span class="tc-eyebrow">ACCESOS RÁPIDOS</span>
+                    <h2>Acciones frecuentes</h2>
                 </div>
-                <div class="tc-actions">
-                    <a href="#caja"><i class="fa-solid fa-cash-register" aria-hidden="true"></i><span>Cobrar</span></a>
-                    <a href="panel_recepcionista.php?metodo=Transferencia#caja"><i class="fa-solid fa-building-columns" aria-hidden="true"></i><span>Registrar transferencia</span></a>
-                    <a href="modulos/alumnos/lista.php"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Consultar alumnos</span></a>
-                    <a href="modulos/alumnos/crear_al.php"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span>Registrar alumno</span></a>
-                </div>
+            </div>
+            <div class="tc-actions">
+                <a href="registrar_pago.php?modo=cobro"><i class="fa-solid fa-cash-register" aria-hidden="true"></i><span>Cobrar</span></a>
+                <a href="registrar_pago.php?modo=transferencia"><i class="fa-solid fa-building-columns" aria-hidden="true"></i><span>Registrar transferencia</span></a>
+                <a href="modulos/alumnos/lista.php"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Consultar alumnos</span></a>
             </div>
         </section>
 
@@ -168,7 +183,7 @@ tc_shell_open([
                                 <tr>
                                     <td data-label="Alumno"><?= tc_e($debtor['apellidos'] . ', ' . $debtor['nombre']) ?></td>
                                     <td data-label="Saldo">$<?= tc_e(caja_money($debtor['saldo'])) ?></td>
-                                    <td><a class="caja-link" href="panel_recepcionista.php?alumno=<?= (int) $debtor['id_alumno'] ?>#caja">Cobrar</a></td>
+                                    <td><a class="caja-link" href="registrar_pago.php?modo=cobro&amp;alumno=<?= (int) $debtor['id_alumno'] ?>">Cobrar</a></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -190,7 +205,7 @@ tc_shell_open([
             <?php else: ?>
                 <div class="admin-table-wrap">
                     <table class="admin-table">
-                        <thead><tr><th>Folio</th><th>Alumno</th><th>Monto</th><th>Método</th><th>Pagador</th></tr></thead>
+                        <thead><tr><th>Folio</th><th>Alumno</th><th>Monto</th><th>Método</th><th>Pagador</th><th>Comprobante</th></tr></thead>
                         <tbody>
                             <?php foreach ($todayPayments as $payment): ?>
                                 <tr>
@@ -204,6 +219,7 @@ tc_shell_open([
                                         <?php endif; ?>
                                     </td>
                                     <td data-label="Pagador"><?= tc_e($payment['nombre_pagador'] ?? '') ?></td>
+                                    <td><a href="comprobante.php?id=<?= (int) $payment['id_pago'] ?>">Ver</a></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

@@ -49,7 +49,7 @@ $billingConfiguration = new BillingConfigurationController(new BillingConfigurat
 $router->add('POST', '~^/login$~', [$auth, 'login'], false);
 $router->add('POST', '~^/logout$~', [$auth, 'logout']);
 $router->add('GET', '~^/students$~', [$students, 'index'], true, 'students.read');
-$router->add('POST', '~^/students$~', [$students, 'store'], true, 'students.write');
+$router->add('POST', '~^/students$~', [$students, 'store'], true, 'students.create');
 $router->add('GET', '~^/students/me$~', [$students, 'mine'], true, 'students.read_own');
 $router->add('GET', '~^/students/assigned$~', [$students, 'assigned'], true, 'students.read_assigned');
 $router->add('GET', '~^/students/(?P<id>\d+)$~', [$students, 'show'], true, 'students.read');

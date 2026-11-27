@@ -21,7 +21,7 @@ final class Database
         $username = getenv('DB_USER') ?: 'root';
         $password = getenv('DB_PASSWORD') ?: '';
 
-        self::$connection = new PDO(
+        $connection = new PDO(
             "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4",
             $username,
             $password,
@@ -31,6 +31,10 @@ final class Database
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]
         );
+
+        $offset = (new \DateTimeImmutable('now', new \DateTimeZone('America/Matamoros')))->format('P');
+        $connection->prepare('SET time_zone = :offset')->execute(['offset' => $offset]);
+        self::$connection = $connection;
 
         return self::$connection;
     }

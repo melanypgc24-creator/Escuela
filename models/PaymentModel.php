@@ -197,16 +197,7 @@ final class PaymentModel
                         throw new DomainException('La base de datos no devolvió un identificador de pago válido.');
                     }
 
-                    // Folio legible y único derivado del ID (la columna folio ya existía pero nunca se llenaba).
-                    $folio = sprintf(
-                        'TC-%s-%06d',
-                        date('Ymd', (int) strtotime((string) $data['fecha_pago'])),
-                        $paymentId
-                    );
-                    $setFolio = $this->db->prepare(
-                        'UPDATE pagos SET folio = :folio WHERE id_pago = :id_pago AND folio IS NULL'
-                    );
-                    $setFolio->execute(['folio' => $folio, 'id_pago' => $paymentId]);
+                    $folio = $this->assignFolio($paymentId, $data['fecha_pago']);
 
                     $apply = $this->db->prepare(
                         'INSERT INTO aplicaciones_pagos
@@ -254,6 +245,7 @@ final class PaymentModel
                         ['id_alumno' => $studentId, 'metodo_pago' => $data['metodo_pago'], 'folio' => $folio]
                         + (is_array($data['detalles_auditoria'] ?? null) ? $data['detalles_auditoria'] : [])
                     );
+                    (new ReceiptModel($this->db))->capture($paymentId, (int) $data['id_usuario_registra']);
 
                     $this->db->commit();
                     return $paymentId;
@@ -265,6 +257,20 @@ final class PaymentModel
                 }
             }
         );
+    }
+
+    public function assignFolio(int $paymentId, string $date): string
+    {
+        if (!$this->db->inTransaction()) {
+            throw new DomainException('El folio debe asignarse dentro de la transacción del pago.');
+        }
+        $folio = sprintf('TC-%s-%06d', str_replace('-', '', $date), $paymentId);
+        $statement = $this->db->prepare('UPDATE pagos SET folio = :folio WHERE id_pago = :id AND folio IS NULL');
+        $statement->execute(['folio' => $folio, 'id' => $paymentId]);
+        if ($statement->rowCount() !== 1) {
+            throw new DomainException('No se pudo asignar el folio del pago.');
+        }
+        return $folio;
     }
 
     public function cancel(int $paymentId, int $actorUserId, string $reason): bool
@@ -361,11 +367,12 @@ final class PaymentModel
                         'INSERT INTO historial_pagos
                             (id_pago, estado_anterior, estado_nuevo, importe_anterior, importe_nuevo,
                              id_usuario_responsable, motivo)
-                         VALUES (:id_pago, "activo", "cancelado", :importe, :importe, :id_usuario, :motivo)'
+                         VALUES (:id_pago, "activo", "cancelado", :importe_anterior, :importe_nuevo, :id_usuario, :motivo)'
                     );
                     $history->execute([
                         'id_pago' => $paymentId,
-                        'importe' => $payment['monto'],
+                        'importe_anterior' => $payment['monto'],
+                        'importe_nuevo' => $payment['monto'],
                         'id_usuario' => $actorUserId,
                         'motivo' => $reason,
                     ]);

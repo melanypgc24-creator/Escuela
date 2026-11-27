@@ -153,7 +153,7 @@ $jsVer = is_file($jsFile) ? (int) filemtime($jsFile) : 1;
                 </a>
             </li>
             <li>
-                <a class="tc-link" href="/Escuela/panel_maestro.php#pasar-asistencia">
+                <a class="tc-link" href="/Escuela/panel_maestro.php?seccion=asistencia">
                     <i class="fa-solid fa-user-check" aria-hidden="true"></i>Pasar asistencia
                 </a>
             </li>
@@ -180,7 +180,10 @@ $jsVer = is_file($jsFile) ? (int) filemtime($jsFile) : 1;
                     <h1>Historial de pases de lista</h1>
                     <p>Consulta los registros de asistencia guardados en días anteriores por clase y fecha.</p>
                 </div>
-                <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+                <div class="admin-user-actions">
+                    <div class="tc-date"><i class="fa-regular fa-calendar" aria-hidden="true"></i><?= $escape(date('d/m/Y')) ?></div>
+                    <a class="admin-cancel" href="/Escuela/panel_maestro.php?seccion=asistencia"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a pasar lista</a>
+                </div>
             </section>
 
             <?php if (is_string($warning)): ?>
@@ -196,7 +199,6 @@ $jsVer = is_file($jsFile) ? (int) filemtime($jsFile) : 1;
                             <span class="tc-eyebrow">FILTROS</span>
                             <h2>Buscar pases de lista</h2>
                         </div>
-                        <a class="tc-link-more" href="/Escuela/panel_maestro.php#pasar-asistencia">Volver a pasar lista</a>
                     </div>
 
                     <form method="get" action="/Escuela/modulos/asistencias/historial_asistencias.php" class="class-create-form" style="margin-bottom: 18px;">

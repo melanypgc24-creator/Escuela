@@ -58,6 +58,7 @@ final class EnrollmentModel
             function () use ($classId, $studentId, $actorUserId): int {
                 $this->db->beginTransaction();
                 try {
+                    (new ClassCategoryModel($this->db))->requireCompatible($classId, $studentId);
                     $class = $this->db->prepare(
                         'SELECT capacidad FROM clases WHERE id_clase = :id_clase FOR UPDATE'
                     );

@@ -10,9 +10,34 @@ header('Cache-Control: no-store');
 
 $role = ($_SESSION['rol'] ?? '') === 'recepcionista' ? 'recepcionista' : 'administrador';
 $success = $_SESSION['flash_pago'] ?? null;
-unset($_SESSION['flash_pago']);
+$successPaymentId = $_SESSION['flash_pago_id'] ?? null;
+unset($_SESSION['flash_pago'], $_SESSION['flash_pago_id']);
 $csrfToken = csrf_token();
-$paymentMethods = CAJA_METODOS;
+$mode = $_GET['modo'] ?? '';
+if (!is_string($mode) || !in_array($mode, ['', 'cobro', 'transferencia'], true)) {
+    http_response_code(400);
+    exit('La sección de caja solicitada no es válida.');
+}
+$paymentMethods = match ($mode) {
+    'cobro' => array_values(array_diff(CAJA_METODOS, ['Transferencia'])),
+    'transferencia' => ['Transferencia'],
+    default => CAJA_METODOS,
+};
+$formAction = 'registrar_pago.php' . ($mode === '' ? '' : '?modo=' . $mode);
+$pageTitle = match ($mode) {
+    'cobro' => 'Cobrar',
+    'transferencia' => 'Registrar transferencia',
+    default => 'Cobros y transferencias',
+};
+$description = match ($mode) {
+    'cobro' => 'Registra pagos en efectivo o con tarjeta simulada. Se aplican primero al cargo más antiguo del alumno.',
+    'transferencia' => 'Registra una transferencia recibida y sus datos de referencia. Se aplica primero al cargo más antiguo del alumno.',
+    default => 'Registra pagos en efectivo, por transferencia o con tarjeta (simulada). Se aplican primero al cargo más antiguo del alumno.',
+};
+$formValues = $_POST;
+if ($mode === 'transferencia' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    $formValues['metodo_pago'] = 'Transferencia';
+}
 
 try {
     $pdo = require __DIR__ . '/config/conexion.php';
@@ -23,7 +48,7 @@ try {
 }
 
 caja_actualizar_vencidos($pdo);
-$error = caja_procesar_pago($pdo, $paymentMethods, 'registrar_pago.php');
+$error = caja_procesar_pago($pdo, $paymentMethods, $formAction);
 
 try {
     $students = caja_alumnos($pdo);
@@ -55,20 +80,21 @@ try {
 $references = caja_referencias_pagos($pdo, array_map(static fn (array $row): int => (int) $row['id_pago'], $recentPayments));
 
 tc_shell_open([
-    'title' => 'Cobros y transferencias',
+    'title' => $pageTitle,
     'role' => $role,
-    'active' => $role === 'recepcionista' ? 'cobrar' : 'cobros',
+    'active' => $role === 'recepcionista' ? ($mode === 'transferencia' ? 'transferencia' : 'cobrar') : 'cobros',
     'csrf' => $csrfToken,
     'css' => ['css/caja.css'],
-    'breadcrumb' => [['Cobros y transferencias', null]],
+    'breadcrumb' => [[$pageTitle, null]],
 ]);
 ?>
-        <section class="tc-page-head">
+        <section class="tc-page-head tc-page-head-actions">
             <div>
                 <span class="tc-eyebrow">CAJA</span>
-                <h1>Cobros y transferencias</h1>
-                <p>Registra pagos en efectivo, por transferencia o con tarjeta (simulada). Se aplican primero al cargo más antiguo del alumno.</p>
+                <h1><?= tc_e($pageTitle) ?></h1>
+                <p><?= tc_e($description) ?></p>
             </div>
+            <a class="admin-cancel" href="<?= $role === 'recepcionista' ? 'panel_recepcionista.php' : 'dashboard_admin.php' ?>"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver al panel</a>
         </section>
 
         <section class="tc-panel" id="caja">
@@ -82,11 +108,12 @@ tc_shell_open([
                 <p class="auth-error admin-message" role="alert"><?= tc_e($error) ?></p>
             <?php elseif (is_string($success)): ?>
                 <p class="auth-success admin-message" role="status"><?= tc_e($success) ?></p>
+                <?php if (is_int($successPaymentId)): ?><p><a href="comprobante.php?id=<?= $successPaymentId ?>">Ver comprobante</a> · <a href="comprobante.php?id=<?= $successPaymentId ?>&amp;imprimir=1">Imprimir</a> · <a href="comprobante.php?id=<?= $successPaymentId ?>&amp;formato=pdf">Descargar PDF</a></p><?php endif; ?>
             <?php endif; ?>
             <?php if ($students === []): ?>
                 <div class="tc-empty"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>No hay alumnos activos disponibles para registrar pagos.</span></div>
             <?php else: ?>
-                <?php caja_render_formulario($students, $paymentMethods, $_POST, $csrfToken, 'registrar_pago.php', $selected, $charges); ?>
+                <?php caja_render_formulario($students, $paymentMethods, $formValues, $csrfToken, $formAction, $selected, $charges); ?>
             <?php endif; ?>
         </section>
 
@@ -103,7 +130,7 @@ tc_shell_open([
             <?php else: ?>
                 <div class="admin-table-wrap">
                     <table class="admin-table">
-                        <thead><tr><th>Folio</th><th>Fecha</th><th>Alumno</th><th>Monto</th><th>Método</th><th>Pagador</th></tr></thead>
+                        <thead><tr><th>Folio</th><th>Fecha</th><th>Alumno</th><th>Monto</th><th>Método</th><th>Pagador</th><th>Comprobante</th></tr></thead>
                         <tbody>
                             <?php foreach ($recentPayments as $payment): ?>
                                 <tr>
@@ -118,6 +145,7 @@ tc_shell_open([
                                         <?php endif; ?>
                                     </td>
                                     <td data-label="Pagador"><?= tc_e($payment['nombre_pagador'] ?? '') ?></td>
+                                    <td><a href="comprobante.php?id=<?= (int) $payment['id_pago'] ?>">Ver</a></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

@@ -28,20 +28,12 @@ final class ClassModel
 
     public function studentsForProfessor(int $professorId): array
     {
-        $statement = $this->db->prepare(
-            'SELECT DISTINCT a.id_alumno, a.matricula, a.nombre, a.apellidos, a.telefono,
-                    a.correo_contacto, a.fecha_nacimiento, a.estatus, a.categoria,
-                    a.id_cinturon, c.color AS color_cinturon
-             FROM clases_alumnos ca
-             JOIN clases cl ON cl.id_clase = ca.id_clase
-             JOIN alumnos a ON a.id_alumno = ca.id_alumno
-             LEFT JOIN cinturon c ON c.id_cinturon = a.id_cinturon
-             WHERE cl.id_profesor = :id_profesor
-               AND ca.estado = "activa"
-             ORDER BY a.apellidos, a.nombre'
-        );
-        $statement->execute(['id_profesor' => $professorId]);
-        return $statement->fetchAll();
+        $students = (new StudentModel($this->db))->allForProfessor($professorId);
+        foreach ($students as &$student) {
+            unset($student['fecha_ingreso']);
+        }
+        unset($student);
+        return $students;
     }
 
     private function fetchClasses(?int $professorId, ?int $studentId): array
@@ -63,7 +55,7 @@ final class ClassModel
         }
         $where = $conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions);
         $statement = $this->db->prepare(
-            'SELECT cl.id_clase, cl.nombre_clase, cl.id_profesor,
+            'SELECT cl.id_clase, cl.nombre_clase, cl.categoria, cl.id_profesor,
                     CONCAT(p.nombre, " ", p.apellidos) AS profesor,
                     cl.dias, cl.hora_inicio, cl.hora_fin, cl.capacidad
              FROM clases cl

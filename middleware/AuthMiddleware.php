@@ -40,6 +40,13 @@ final class AuthMiddleware
         $_SESSION['rol'] = $user['rol'];
         $_SESSION['id_alumno'] = $user['id_alumno'] === null ? null : (int) $user['id_alumno'];
         $_SESSION['id_profesor'] = $user['id_profesor'] === null ? null : (int) $user['id_profesor'];
+        try {
+            (new \App\Models\ClassCategoryModel(Database::connect()))->cancelIncompatible((int) $_SESSION['id_usuario']);
+        } catch (\Throwable $exception) {
+            error_log('API: no se pudieron actualizar las inscripciones por categoría: ' . $exception->getMessage());
+            JsonResponse::send(['error' => 'No se pudieron verificar las categorías de las inscripciones.'], 503);
+            exit;
+        }
     }
 
     public static function requireAdministrator(): void

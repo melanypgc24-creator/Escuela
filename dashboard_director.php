@@ -154,6 +154,12 @@ $puedeCrearClases = in_array($rolActual, ['administrador', 'director'], true);
                 </a>
             </li>
             <li>
+                <a class="tc-link" href="modulos/alumnos/lista.php"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i><span>Buscar alumnos</span></a>
+            </li>
+            <li>
+                <a class="tc-link" href="historial_pagos.php"><i class="fa-solid fa-receipt" aria-hidden="true"></i><span>Historial de pagos</span></a>
+            </li>
+            <li>
                 <a class="tc-link" href="modulos/clases/clases.php">
                     <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Gestionar clases
                 </a>
@@ -310,7 +316,7 @@ $puedeCrearClases = in_array($rolActual, ['administrador', 'director'], true);
                         <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>Ver clases
                     </a>
                     <?php if ($puedeCrearClases): ?>
-                        <a href="modulos/clases/crear_cl.php">
+                        <a href="modulos/clases/crear_cl.php?origen=panel">
                             <i class="fa-solid fa-plus" aria-hidden="true"></i>Crear clase
                         </a>
                     <?php endif; ?>

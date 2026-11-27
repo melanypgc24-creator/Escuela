@@ -8,11 +8,13 @@ $pdo = require dirname(__DIR__, 2) . '/config/conexion.php';
 
 $error = null;
 $input = $_POST;
+$fromPanel = ($_SESSION['rol'] ?? '') === 'director' && ($_GET['origen'] ?? '') === 'panel';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     require_valid_csrf();
 
     $nombreClase = trim((string) ($input['nombre_clase'] ?? ''));
+    $categoria = (string) ($input['categoria'] ?? '');
     $rawProf     = $input['id_profesor'] ?? null;
     $idProfesor  = ($rawProf === '' || $rawProf === null)
         ? false
@@ -33,6 +35,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
     if (
         $nombreClase === '' || mb_strlen($nombreClase, 'UTF-8') > 100
+        || !in_array($categoria, ['infantil', 'adulta'], true)
         || $idProfesor === false || $idProfesor < 0
         || $dias === '' || mb_strlen($dias, 'UTF-8') > 50
         || !$inicioValida
@@ -40,7 +43,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         || $capacidad === false || $capacidad === null || $capacidad < 1
         || $costo === false || $costo < 0 || $costo > 99999999
     ) {
-        $error = 'Revisa el nombre, profesor, días, horario, capacidad y costo de la clase.';
+        $error = 'Revisa el nombre, categoría, profesor, días, horario, capacidad y costo de la clase.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -56,12 +59,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $nextId = (int) $pdo->query('SELECT COALESCE(MAX(id_clase), 0) + 1 FROM clases')->fetchColumn();
 
             $stmt = $pdo->prepare(
-                'INSERT INTO clases (id_clase, nombre_clase, id_profesor, dias, hora_inicio, hora_fin, capacidad, costo)
-                 VALUES (:id_clase, :nombre_clase, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad, :costo)'
+                'INSERT INTO clases (id_clase, nombre_clase, categoria, id_profesor, dias, hora_inicio, hora_fin, capacidad, costo)
+                 VALUES (:id_clase, :nombre_clase, :categoria, :id_profesor, :dias, :hora_inicio, :hora_fin, :capacidad, :costo)'
             );
             $stmt->execute([
                 'id_clase'     => $nextId,
                 'nombre_clase' => $nombreClase,
+                'categoria'    => $categoria,
                 'id_profesor'  => $idProfesor,
                 'dias'         => $dias,
                 'hora_inicio'  => $inicioHm,
@@ -140,7 +144,7 @@ $csrfToken = $escape(csrf_token());
         <section class="role-dashboard-section">
             <div class="role-dashboard-section-heading">
                 <h2>Datos de la clase</h2>
-                <a href="clases.php">Volver a clases</a>
+                <a class="admin-cancel" href="<?= $fromPanel ? '../../dashboard_director.php' : 'clases.php' ?>"><?= $fromPanel ? 'Volver al panel' : 'Volver a clases' ?></a>
             </div>
             <div class="role-dashboard-section-body">
                 <?php if ($error !== null): ?>
@@ -152,6 +156,13 @@ $csrfToken = $escape(csrf_token());
 
                     <label for="nombre_clase">Nombre de la clase</label>
                     <input id="nombre_clase" name="nombre_clase" type="text" maxlength="100" required value="<?= $escape($input['nombre_clase'] ?? '') ?>">
+
+                    <label for="categoria">Categoría</label>
+                    <select id="categoria" name="categoria" required>
+                        <option value="">Selecciona una categoría</option>
+                        <option value="infantil" <?= ($input['categoria'] ?? '') === 'infantil' ? 'selected' : '' ?>>Infantil (menores de 18 años)</option>
+                        <option value="adulta" <?= ($input['categoria'] ?? '') === 'adulta' ? 'selected' : '' ?>>Adulta (18 años o más)</option>
+                    </select>
 
                     <label for="id_profesor">Profesor</label>
                     <select id="id_profesor" name="id_profesor" required>

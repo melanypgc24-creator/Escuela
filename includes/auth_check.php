@@ -71,5 +71,16 @@ function current_authenticated_role(): string
     $_SESSION['rol'] = $user['rol'];
     $_SESSION['id_alumno'] = $user['id_alumno'] === null ? null : (int) $user['id_alumno'];
     $_SESSION['id_profesor'] = $user['id_profesor'] === null ? null : (int) $user['id_profesor'];
+    static $categoriesChecked = false;
+    if (!$categoriesChecked) {
+        try {
+            (new \App\Models\ClassCategoryModel($pdo))->cancelIncompatible((int) $_SESSION['id_usuario']);
+            $categoriesChecked = true;
+        } catch (\Throwable $exception) {
+            error_log('No se pudieron actualizar las inscripciones por categoría: ' . $exception->getMessage());
+            http_response_code(503);
+            exit('No se pudieron verificar las categorías de las inscripciones. Inténtalo más tarde.');
+        }
+    }
     return $user['rol'];
 }

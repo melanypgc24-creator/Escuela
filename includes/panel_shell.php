@@ -27,15 +27,38 @@ function tc_e(mixed $value): string
  */
 function tc_shell_menu(string $role): array
 {
+    if ($role === 'director') {
+        return [
+            ['key' => 'resumen', 'label' => 'Resumen', 'icon' => 'fa-chart-line', 'href' => 'dashboard_director.php'],
+            ['key' => 'reporte', 'label' => 'Reporte financiero', 'icon' => 'fa-sack-dollar', 'href' => 'dashboard_director.php#reporte-financiero'],
+            ['key' => 'vencimientos', 'label' => 'Vencimientos', 'icon' => 'fa-calendar-xmark', 'href' => 'dashboard_director.php#proximos-vencimientos'],
+            ['key' => 'adeudos', 'label' => 'Adeudos', 'icon' => 'fa-file-invoice-dollar', 'href' => 'dashboard_director.php#adeudos-principales'],
+            ['key' => 'alumnos', 'label' => 'Buscar alumnos', 'icon' => 'fa-user-graduate', 'href' => 'modulos/alumnos/lista.php'],
+            ['key' => 'historial', 'label' => 'Historial de pagos', 'icon' => 'fa-receipt', 'href' => 'historial_pagos.php'],
+            ['key' => 'clases', 'label' => 'Gestionar clases', 'icon' => 'fa-calendar-days', 'href' => 'modulos/clases/clases.php'],
+        ];
+    }
+
+    if ($role === 'maestro') {
+        return [
+            ['key' => 'resumen', 'label' => 'Resumen', 'icon' => 'fa-gauge-high', 'href' => 'panel_maestro.php'],
+            ['key' => 'asistencia', 'label' => 'Pasar asistencia', 'icon' => 'fa-clipboard-check', 'href' => 'panel_maestro.php?seccion=asistencia'],
+            ['key' => 'historial-asistencia', 'label' => 'Historial de asistencia', 'icon' => 'fa-clock-rotate-left', 'href' => 'modulos/asistencias/historial_asistencias.php'],
+            ['key' => 'solicitudes', 'label' => 'Solicitudes de inscripción', 'icon' => 'fa-user-plus', 'href' => 'panel_maestro.php?seccion=solicitudes'],
+            ['key' => 'clases', 'label' => 'Mis clases', 'icon' => 'fa-calendar-days', 'href' => 'panel_maestro.php?seccion=clases'],
+            ['key' => 'alumnos', 'label' => 'Alumnos asignados', 'icon' => 'fa-users', 'href' => 'panel_maestro.php?seccion=alumnos'],
+        ];
+    }
+
     if ($role === 'recepcionista') {
         return [
             ['key' => 'resumen', 'label' => 'Resumen', 'icon' => 'fa-gauge-high', 'href' => 'panel_recepcionista.php'],
-            ['key' => 'cobrar', 'label' => 'Cobrar', 'icon' => 'fa-cash-register', 'href' => 'panel_recepcionista.php#caja'],
-            ['key' => 'transferencia', 'label' => 'Registrar transferencia', 'icon' => 'fa-building-columns', 'href' => 'panel_recepcionista.php?metodo=Transferencia#caja'],
+            ['key' => 'cobrar', 'label' => 'Cobrar', 'icon' => 'fa-cash-register', 'href' => 'registrar_pago.php?modo=cobro'],
+            ['key' => 'transferencia', 'label' => 'Registrar transferencia', 'icon' => 'fa-building-columns', 'href' => 'registrar_pago.php?modo=transferencia'],
             ['key' => 'adeudos', 'label' => 'Alumnos con adeudo', 'icon' => 'fa-triangle-exclamation', 'href' => 'panel_recepcionista.php#adeudos'],
             ['key' => 'pagos', 'label' => 'Pagos de hoy', 'icon' => 'fa-receipt', 'href' => 'panel_recepcionista.php#pagos-hoy'],
+            ['key' => 'historial', 'label' => 'Historial de pagos', 'icon' => 'fa-clock-rotate-left', 'href' => 'historial_pagos.php'],
             ['key' => 'alumnos', 'label' => 'Consultar alumnos', 'icon' => 'fa-user-graduate', 'href' => 'modulos/alumnos/lista.php'],
-            ['key' => 'nuevo-alumno', 'label' => 'Registrar alumno', 'icon' => 'fa-user-plus', 'href' => 'modulos/alumnos/crear_al.php'],
         ];
     }
 
@@ -52,6 +75,7 @@ function tc_shell_menu(string $role): array
             ],
         ],
         ['key' => 'cobros', 'label' => 'Cobros y transferencias', 'icon' => 'fa-file-invoice-dollar', 'href' => 'registrar_pago.php'],
+        ['key' => 'historial', 'label' => 'Historial de pagos', 'icon' => 'fa-clock-rotate-left', 'href' => 'historial_pagos.php'],
         ['key' => 'cargos', 'label' => 'Cargos mensuales', 'icon' => 'fa-calendar-plus', 'href' => 'generar_cargos.php'],
     ];
 }
@@ -59,15 +83,19 @@ function tc_shell_menu(string $role): array
 /**
  * Imprime desde <!DOCTYPE> hasta la apertura de <main class="tc-content"> y la miga de pan.
  *
- * @param array{title:string, role:string, active?:string, csrf:string, breadcrumb?:list<array{0:string,1:?string}>, css?:list<string>} $options
+ * @param array{title:string, role:string, active?:string, csrf:string, breadcrumb?:list<array{0:string,1:?string}>, css?:list<string>, base?:string} $options
  */
 function tc_shell_open(array $options): void
 {
     $role = (string) ($options['role'] ?? 'administrador');
     $active = (string) ($options['active'] ?? '');
-    $home = $role === 'recepcionista' ? 'panel_recepcionista.php' : 'dashboard_admin.php';
-    $roleLabel = $role === 'recepcionista' ? 'Secretaría' : 'Admin';
-    $rootLabel = $role === 'recepcionista' ? 'Panel de secretaría' : 'Panel de administración';
+    $base = (string) ($options['base'] ?? '');
+    [$home, $roleLabel, $rootLabel] = match ($role) {
+        'recepcionista' => ['panel_recepcionista.php', 'Secretaría', 'Panel de secretaría'],
+        'director' => ['dashboard_director.php', 'Dirección', 'Panel de dirección'],
+        'maestro' => ['panel_maestro.php', 'Instructor', 'Panel de instructor'],
+        default => ['dashboard_admin.php', 'Admin', 'Panel de administración'],
+    };
     $baseDir = dirname(__DIR__);
     $stylesheets = array_merge(['css/estilos.css'], $options['css'] ?? []);
     ?>
@@ -78,7 +106,7 @@ function tc_shell_open(array $options): void
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= tc_e($options['title']) ?> | Team Cats</title>
     <?php foreach ($stylesheets as $stylesheet): ?>
-        <link rel="stylesheet" href="<?= tc_e($stylesheet) ?>?v=<?= (int) @filemtime($baseDir . '/' . $stylesheet) ?>">
+        <link rel="stylesheet" href="<?= tc_e($base . $stylesheet) ?>?v=<?= (int) @filemtime($baseDir . '/' . $stylesheet) ?>">
     <?php endforeach; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 </head>
@@ -87,12 +115,12 @@ function tc_shell_open(array $options): void
         <button class="tc-menu-btn" id="tc-menu-btn" type="button" aria-label="Mostrar u ocultar el menú" aria-controls="tc-sidebar">
             <i class="fa-solid fa-bars" aria-hidden="true"></i>
         </button>
-        <a class="tc-topbar-brand" href="<?= tc_e($home) ?>">TEAM CATS</a>
+        <a class="tc-topbar-brand" href="<?= tc_e($base . $home) ?>">TEAM CATS</a>
         <div class="tc-topbar-user">
             <span class="tc-topbar-role"><?= tc_e($roleLabel) ?></span>
-            <form method="post" action="logout.php">
+            <form method="post" action="<?= tc_e($base) ?>logout.php">
                 <input type="hidden" name="csrf_token" value="<?= tc_e($options['csrf']) ?>">
-                <button type="submit" class="tc-logout">
+                <button type="submit" class="tc-logout" aria-label="Cerrar sesión">
                     <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
                     <span>Cerrar sesión</span>
                 </button>
@@ -101,8 +129,8 @@ function tc_shell_open(array $options): void
     </div>
 
     <div class="tc-sidebar" id="tc-sidebar">
-        <a class="tc-sidebar-logo" href="<?= tc_e($home) ?>">
-            <img src="imagenes/Logo.png" alt="Logo de Team Cats">
+        <a class="tc-sidebar-logo" href="<?= tc_e($base . $home) ?>">
+            <img src="<?= tc_e($base) ?>imagenes/Logo.png" alt="Logo de Team Cats">
             <span>Escuela de Jiu-Jitsu</span>
         </a>
         <ul class="tc-menu" aria-label="Secciones del panel">
@@ -125,14 +153,14 @@ function tc_shell_open(array $options): void
                         <ul class="tc-submenu" id="<?= tc_e($groupId) ?>"<?= $groupOpen ? '' : ' hidden' ?>>
                             <?php foreach ($item['children'] as $child): ?>
                                 <li>
-                                    <a class="tc-link tc-sublink<?= $child['key'] === $active ? ' is-active' : '' ?>" href="<?= tc_e($child['href']) ?>"<?= $child['key'] === $active ? ' aria-current="page"' : '' ?>>
+                                    <a class="tc-link tc-sublink<?= $child['key'] === $active ? ' is-active' : '' ?>" href="<?= tc_e($base . $child['href']) ?>"<?= $child['key'] === $active ? ' aria-current="page"' : '' ?>>
                                         <i class="fa-solid <?= tc_e($child['icon']) ?>" aria-hidden="true"></i><?= tc_e($child['label']) ?>
                                     </a>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
                     <?php else: ?>
-                        <a class="tc-link<?= $item['key'] === $active ? ' is-active' : '' ?>" href="<?= tc_e($item['href']) ?>"<?= $item['key'] === $active ? ' aria-current="page"' : '' ?>>
+                        <a class="tc-link<?= $item['key'] === $active ? ' is-active' : '' ?>" href="<?= tc_e($base . $item['href']) ?>"<?= $item['key'] === $active ? ' aria-current="page"' : '' ?>>
                             <i class="fa-solid <?= tc_e($item['icon']) ?>" aria-hidden="true"></i><?= tc_e($item['label']) ?>
                         </a>
                     <?php endif; ?>
@@ -146,7 +174,7 @@ function tc_shell_open(array $options): void
     <div class="tc-main">
         <main class="tc-content">
         <p class="tc-breadcrumb">
-            <a href="<?= tc_e($home) ?>"><?= tc_e($rootLabel) ?></a>
+            <a href="<?= tc_e($base . $home) ?>"><?= tc_e($rootLabel) ?></a>
             <?php foreach ($options['breadcrumb'] ?? [] as $crumb): ?>
                 <i class="fa-solid fa-angle-right" aria-hidden="true"></i>
                 <?php if ($crumb[1] !== null): ?>
@@ -164,7 +192,7 @@ function tc_shell_open(array $options): void
  *
  * @param list<string> $scripts Scripts adicionales (rutas relativas a la raíz del proyecto).
  */
-function tc_shell_close(array $scripts = []): void
+function tc_shell_close(array $scripts = [], string $base = ''): void
 {
     $baseDir = dirname(__DIR__);
     $scripts = array_merge(['js/panel-shell.js'], $scripts);
@@ -173,7 +201,7 @@ function tc_shell_close(array $scripts = []): void
         <footer class="tc-footer">Team Cats · Escuela de Jiu-Jitsu</footer>
     </div>
     <?php foreach ($scripts as $script): ?>
-        <script src="<?= tc_e($script) ?>?v=<?= (int) @filemtime($baseDir . '/' . $script) ?>"></script>
+        <script src="<?= tc_e($base . $script) ?>?v=<?= (int) @filemtime($baseDir . '/' . $script) ?>"></script>
     <?php endforeach; ?>
 </body>
 </html>
