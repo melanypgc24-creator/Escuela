@@ -62,7 +62,7 @@ include __DIR__ . '/includes/header.php';
                 <p class="etiqueta-seccion">Actividad especial</p>
                 <h3>Defensa personal para mujeres</h3>
                 <p>Con motivo del Día Internacional de la Mujer, la academia organizó una clase de defensa personal para mujeres. Matamoros Sport publicó el video el 9 de marzo de 2026; es un ejemplo de las actividades especiales que se comparten con la comunidad.</p>
-                <a class="enlace-facebook" href="https://www.facebook.com/share/v/1FScYoYJaJ/" target="_blank" rel="noopener noreferrer">
+                <a class="enlace-facebook" href="https://www.facebook.com/share/v/1AAiRdWSrA/" target="_blank" rel="noopener noreferrer">
                     Ver publicación en Facebook <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                 </a>
             </div>
@@ -78,7 +78,7 @@ include __DIR__ . '/includes/header.php';
         </article>
         <p class="enlace-proximos-eventos">
             Para conocer próximos seminarios y eventos, consulta las publicaciones de
-            <a href="https://www.facebook.com/JiuJitsuMatamoros" target="_blank" rel="noopener noreferrer">Team Cats en Facebook</a>.
+            <a href="https://www.facebook.com/share/1Kofvu9cYN/" target="_blank" rel="noopener noreferrer">Team Cats en Facebook</a>.
         </p>
         <script async defer crossorigin="anonymous" src="https://connect.facebook.net/es_LA/sdk.js#xfbml=1&amp;version=v27.0"></script>
     </section>
